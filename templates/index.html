@@ -3,208 +3,445 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenAI Chatbot</title>
+    <title>Email Reply Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style type="text/css">
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
+        :root {
+            --primary-color: #0ea5e9;
+            --primary-hover: #0284c7;
+            --light-bg: #f9fafb;
+            --dark-text: #1f2937;
+            --medium-text: #4b5563;
+            --light-text: #6b7280;
+            --border-color: #e5e7eb;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --radius-sm: 0.375rem;
+            --radius-md: 0.5rem;
+            --radius-lg: 0.75rem;
+            --transition: all 0.2s ease;
         }
-        .container {
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            line-height: 1.5;
+            color: var(--dark-text);
+            background-color: var(--light-bg);
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .page-container {
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            align-items: center;
+            padding: 1rem;
         }
+        
+        .container {
+            width: 100%;
+            max-width: 700px;
+            background-color: white;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 0.25rem;
+        }
+        
+        h1 {
+            font-weight: 600;
+            font-size: 1.5rem;
+            color: var(--primary-color);
+            margin-bottom: 0.25rem;
+        }
+        
+        .subtitle {
+            color: var(--medium-text);
+            font-size: 0.95rem;
+        }
+        
         .input-area {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 1rem;
         }
-        #message {
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            min-height: 100px;
-            resize: vertical;
-            font-family: inherit;
-            font-size: 1em;
-        }
-        .submit-button {
-            align-self: flex-end;
-        }
-        button {
-            padding: 10px 20px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        .response {
-            background-color: #f9f9f9;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 15px;
-            white-space: pre-line;
-        }
-        .loading {
-            color: #666;
-            font-style: italic;
-        }
-        .mode-buttons {
+        
+        .tone-selector {
             display: flex;
+            gap: 0.5rem;
             flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 15px;
         }
-        .mode-button {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            font-weight: bold;
-        }
-        .mode-button.active {
-            box-shadow: 0 0 0 2px #000;
-        }
-        .mode-button.empathy {
-            background-color: #FFD1DC; /* Light pink */
-            color: #333;
-        }
-        .mode-button.professional {
-            background-color: #ADD8E6; /* Light blue */
-            color: #333;
-        }
-        .mode-button.storytelling {
-            background-color: #90EE90; /* Light green */
-            color: #333;
-        }
-        .mode-button.emotional {
-            background-color: #E6E6FA; /* Lavender */
-            color: #333;
-        }
-        .mode-button.default {
-            background-color: #F5F5F5; /* Light gray */
-            color: #333;
-        }
-        .mode-description {
-            margin-top: 5px;
-            font-size: 0.9em;
-            color: #666;
+        
+        .tone-option {
+            appearance: none;
+            -webkit-appearance: none;
             display: none;
         }
-        .mode-description.active {
-            display: block;
+        
+        .tone-label {
+            display: inline-block;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.85rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        
+        .tone-option:checked + .tone-label {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        
+        .tone-label:hover {
+            border-color: var(--primary-color);
+        }
+        
+        .input-box {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+        
+        textarea {
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            resize: vertical;
+            font-family: inherit;
+            font-size: 0.95rem;
+            color: var(--dark-text);
+            transition: var(--transition);
+        }
+        
+        #original-message {
+            min-height: 120px;
+        }
+        
+        #reply-intent {
+            min-height: 80px;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+        }
+        
+        .submit-area {
+            display: flex;
+            justify-content: flex-end;
+        }
+        
+        button.submit-button {
+            padding: 0.6rem 1rem;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.875rem;
+            transition: var(--transition);
+        }
+        
+        button.submit-button:hover {
+            background-color: var(--primary-hover);
+        }
+        
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            color: var(--medium-text);
+            font-size: 0.875rem;
+            padding: 0.75rem;
+        }
+        
+        .loading-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(14, 165, 233, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary-color);
+            animation: spin 1s linear infinite;
+        }
+        
+        .response {
+            background-color: var(--light-bg);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            white-space: pre-line;
+            line-height: 1.5;
+            color: var(--dark-text);
+            border-left: 2px solid var(--primary-color);
+            animation: fadeIn 0.5s ease;
+        }
+        
+        .response-header {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--primary-color);
+            font-size: 0.9rem;
+        }
+        
+        .input-label {
+            font-weight: 600;
+            color: var(--dark-text);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .email-reply {
+            white-space: pre-wrap;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+        }
+        
+        .button-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 0.75rem;
+        }
+        
+        .action-button {
+            padding: 0.4rem 0.75rem;
+            background-color: transparent;
+            color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: var(--transition);
+        }
+        
+        .action-button:hover {
+            background-color: rgba(14, 165, 233, 0.1);
+        }
+        
+        footer {
+            margin-top: 2rem;
+            text-align: center;
+            font-size: 0.75rem;
+            color: var(--light-text);
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+        
+        @media (max-width: 640px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            h1 {
+                font-size: 1.25rem;
+            }
+            
+            .subtitle {
+                font-size: 0.85rem;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>OpenAI Humanizer Tool</h1>
-        <p>Enter your text below and select a humanizing mode to get alternative phrasings.</p>
-        
-        <div class="mode-buttons">
-            <button class="mode-button default active" data-mode="default">🤖 Default</button>
-            <button class="mode-button empathy" data-mode="empathy">🧠 Empathy</button>
-            <button class="mode-button professional" data-mode="professional">🤝 Professional Warmth</button>
-            <button class="mode-button storytelling" data-mode="storytelling">📚 Storytelling</button>
-        </div>
-        
-        <div class="mode-description default active">
-            Generate natural, human-sounding alternatives to your text.
-        </div>
-        <div class="mode-description empathy">
-            Rewrite with warmth and understanding, acknowledging emotions and showing support.
-        </div>
-        <div class="mode-description professional">
-            Rephrase to sound constructive, supportive, and professionally encouraging.
-        </div>
-        <div class="mode-description storytelling">
-            Turn factual explanations into relatable stories using metaphors and analogies.
-        </div>
-        <div class="mode-description emotional">
-            Reword with compassion for difficult situations, offering kindness and clarity.
-        </div>
-        
-        <div class="input-area">
-            <textarea id="message" placeholder="Enter your text here... (supports paragraphs)"></textarea>
-            <div class="submit-button">
-                <button onclick="sendMessage()">Submit</button>
+    <div class="page-container">
+        <div class="container">
+            <div class="header">
+                <h1>Email Reply Generator</h1>
+                <p class="subtitle">Create professional email responses quickly</p>
+            </div>
+            
+            <div class="input-area">
+                <div class="input-box">
+                    <label for="original-message">Original email:</label>
+                    <textarea id="original-message" placeholder="Paste the email you're replying to..."></textarea>
+                </div>
+                
+                <div class="input-box">
+                    <label for="reply-intent">What do you want to say?</label>
+                    <textarea id="reply-intent" placeholder="Describe what you want to include in your reply..."></textarea>
+                </div>
+                
+                <div class="tone-selector">
+                    <input type="radio" name="tone" id="professional" value="professional" class="tone-option" checked>
+                    <label for="professional" class="tone-label">Professional</label>
+                    
+                    <input type="radio" name="tone" id="friendly" value="friendly" class="tone-option">
+                    <label for="friendly" class="tone-label">Friendly</label>
+                    
+                    <input type="radio" name="tone" id="formal" value="formal" class="tone-option">
+                    <label for="formal" class="tone-label">Formal</label>
+                    
+                    <input type="radio" name="tone" id="concise" value="concise" class="tone-option">
+                    <label for="concise" class="tone-label">Concise</label>
+                </div>
+                
+                <div class="submit-area">
+                    <button class="submit-button" onclick="generateReply()">Generate Reply</button>
+                </div>
+            </div>
+            
+            <div id="loading" class="loading" style="display: none;">
+                <div class="loading-spinner"></div>
+                <span>Crafting your email reply...</span>
+            </div>
+            
+            <div id="response" class="response" style="display: none;">
+                <div class="response-header">Your Email Reply:</div>
+                <div id="response-content" class="email-reply"></div>
+                <div class="button-row">
+                    <button id="copy-button" class="action-button" onclick="copyToClipboard()">Copy to Clipboard</button>
+                </div>
             </div>
         </div>
-        
-        <div id="loading" class="loading" style="display: none;">Processing your request...</div>
-        <div id="response" class="response" style="display: none;"></div>
     </div>
 
     <script>
-        let currentMode = "default";
+        // Get current tone from radio buttons
+        function getCurrentTone() {
+            return document.querySelector('input[name="tone"]:checked').value;
+        }
         
-        // Set up mode button listeners
-        document.querySelectorAll('.mode-button').forEach(button => {
-            button.addEventListener('click', function() {
-                // Update active button
-                document.querySelectorAll('.mode-button').forEach(btn => {
-                    btn.classList.remove('active');
-                });
-                this.classList.add('active');
-                
-                // Update active description
-                const mode = this.getAttribute('data-mode');
-                currentMode = mode;
-                
-                document.querySelectorAll('.mode-description').forEach(desc => {
-                    desc.classList.remove('active');
-                });
-                document.querySelector(`.mode-description.${mode}`).classList.add('active');
-            });
-        });
-        
-        async function sendMessage() {
-            const message = document.getElementById('message').value.trim();
-            if (!message) {
-                alert('Please enter a sentence');
+        // Generate email reply
+        async function generateReply() {
+            const originalMessage = document.getElementById('original-message').value.trim();
+            const replyIntent = document.getElementById('reply-intent').value.trim();
+            const tone = getCurrentTone();
+            
+            if (!originalMessage) {
+                showNotification('Please paste the email you want to reply to');
                 return;
             }
             
-            document.getElementById('loading').style.display = 'block';
+            // Prepare message with both original email and reply intent
+            let message = originalMessage;
+            if (replyIntent) {
+                message = `Original email:\n${originalMessage}\n\nMy reply should: ${replyIntent}`;
+            }
+            
+            // Show loading state
+            document.getElementById('loading').style.display = 'flex';
             document.getElementById('response').style.display = 'none';
             
             try {
-                const response = await fetch('/chat', {
+                const response = await fetch('/generate-reply', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ 
                         message: message,
-                        mode: currentMode
+                        tone: tone
                     }),
                 });
                 
                 const data = await response.json();
                 
+                // Hide loading, show response
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('response').style.display = 'block';
-                document.getElementById('response').textContent = data.response;
+                document.getElementById('response-content').textContent = data.response;
             } catch (error) {
+                // Handle error
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('response').style.display = 'block';
-                document.getElementById('response').textContent = `Error: ${error.message}`;
+                document.getElementById('response-content').textContent = `Error: ${error.message}`;
             }
         }
         
-        // Allow Enter key to submit
-        document.getElementById('message').addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                sendMessage();
+        // Copy generated reply to clipboard
+        function copyToClipboard() {
+            const replyText = document.getElementById('response-content').textContent;
+            navigator.clipboard.writeText(replyText)
+                .then(() => {
+                    showNotification('Reply copied to clipboard!');
+                })
+                .catch(err => {
+                    showNotification('Failed to copy: ' + err);
+                });
+        }
+        
+        // Show notification
+        function showNotification(message) {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = message;
+            notification.style.position = 'fixed';
+            notification.style.bottom = '20px';
+            notification.style.right = '20px';
+            notification.style.backgroundColor = '#f87171';
+            notification.style.color = 'white';
+            notification.style.padding = '0.75rem 1rem';
+            notification.style.borderRadius = 'var(--radius-md)';
+            notification.style.boxShadow = 'var(--shadow-md)';
+            notification.style.zIndex = '1000';
+            notification.style.animation = 'fadeIn 0.3s ease';
+            
+            // Add to body
+            document.body.appendChild(notification);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.style.animation = 'fadeOut 0.3s ease';
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+        
+        // Add fadeOut animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeOut {
+                from { opacity: 1; }
+                to { opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Allow Enter key to submit (Ctrl+Enter or Cmd+Enter)
+        document.getElementById('original-message').addEventListener('keydown', function(event) {
+            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                generateReply();
+            }
+        });
+        
+        document.getElementById('reply-intent').addEventListener('keydown', function(event) {
+            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                generateReply();
             }
         });
     </script>

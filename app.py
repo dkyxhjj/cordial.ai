@@ -4,50 +4,74 @@ from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template
 
 load_dotenv('.env.local')
-api_key = os.getenv('OPENAI_API_KEY')
+api_key = os.getenv('OPENAI_API_KEY') 
 client = OpenAI(api_key=api_key)
 
 
-def get_openai_response(client, user_message, mode="default"):
-    prompts = {
-        "default": (
-            "You are a humanizer tool. Given a sentence, generate 3 to 5 alternative ways to phrase it, "
-            "making them sound natural and human. Only output the alternatives as a numbered list, no explanations. "
-            "At the end, always read it again, and hopefully it make logical sense and it was written by a human"
-            f"Sentence: {user_message}"
-        ),
-        "empathy": (
-            "Rewrite the following message in a warm, understanding tone. Acknowledge any emotions the reader might feel "
-            "(e.g., frustration, confusion, concern), and reassure them that they're being heard and supported. "
-            "Aim to show that a real person is behind the message. Generate 3 to 5 alternatives as a numbered list, no explanations. "
-            "Reword the following message with compassion. Speak as if you're addressing someone going through something difficult. "
-            "Offer kindness, honesty, and clarity — without sounding robotic or overly formal. Avoid sugarcoating but be deeply respectful. "
-             "At the end, always read it again, and hopefully it make logical sense and it was written by a human"
-            f"Message: {user_message}"
-        ),
-        "professional": (
-            "Rephrase the message to sound constructive, supportive, and professional. Keep the original meaning but shift the tone "
-            "to encourage growth, collaboration, or continued effort. Assume the reader is trying their best and deserves dignity. "
-            "Generate 3 to 5 alternatives as a numbered list, no explanations. "
-             "At the end, always read it again, and hopefully it make logical sense and it was written by a human"
-            f"Message: {user_message}"
-        ),
-        "storytelling": (
-            "Turn this factual explanation into a short, relatable story that even a 12-year-old could enjoy. "
-            "Use metaphor, analogy, or a mini-narrative to explain the concept in a fun and memorable way. "
-            "Generate 3 to 5 alternatives as a numbered list, no explanations. "
-             "At the end, always read it again, and hopefully it make logical sense and it was written by a human"
-            f"Message: {user_message}"
-        ),
+def generate_email_reply(client, user_message, tone="professional"):
+    """
+    Generate an email reply based on the user's input email or message.
+    
+    Args:
+        client: OpenAI client instance
+        user_message: The original email or message to reply to
+        tone: The tone of the reply (professional, friendly, formal, concise)
+        
+    Returns:
+        A formatted email reply
+    """
+    tone_instructions = {
+        "professional": "Use a balanced professional tone with appropriate formality while being personable.",
+        "friendly": "Use a warm, conversational tone while maintaining professionalism.",
+        "formal": "Use a highly formal tone appropriate for official business communications.",
+        "concise": "Be brief and to the point while addressing all key points."
     }
     
-    prompt = prompts.get(mode, prompts["default"])
+    selected_tone = tone_instructions.get(tone, tone_instructions["professional"])
+    
+    # Check if the message contains both original email and reply intent
+    reply_intent = ""
+    original_email = user_message
+    
+    if "Original email:" in user_message and "My reply should:" in user_message:
+        parts = user_message.split("\n\nMy reply should:")
+        original_email = parts[0].replace("Original email:\n", "")
+        reply_intent = parts[1].strip()
+    
+    # Create a prompt that instructs the model to generate a professional email reply
+    prompt = f"""
+    You are an email assistant that creates professional email replies. 
+    Generate a complete, well-structured email reply to the following message using a {tone} tone.
+    
+    Guidelines:
+    - Create a full email with greeting, body paragraphs, and closing/signature
+    - Address all points, questions, or requests from the original message
+    - Use appropriate email etiquette and professional language
+    - Be concise but thorough
+    - Do not include meta instructions or code formatting in your response
+    - Format as plain text that can be directly copied into an email client
+    - Do not use markdown formatting
+    - Do not include "Subject:" line
+    
+    Original message:
+    {original_email}
+    """
+    
+    # Add reply intent if provided
+    if reply_intent:
+        prompt += f"""
+    
+    The person wants their reply to: {reply_intent}
+    Make sure to incorporate these points in your response while maintaining a natural flow.
+    """
+    
+    prompt += "\n\nReply:"
     
     try:
         response = client.chat.completions.create(
             model="gpt-4.1",  
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=300,
+            max_tokens=800,
             temperature=0.7,
         )
         return response.choices[0].message.content.strip()
@@ -61,17 +85,17 @@ app = Flask(__name__)
 def index():
     return render_template('index.html')
 
-@app.route('/chat', methods=['POST'])
-def chatbot():
+@app.route('/generate-reply', methods=['POST'])
+def generate_reply():
     data = request.json
     user_message = data.get('message')
-    mode = data.get('mode', 'default')
+    tone = data.get('tone', 'professional')
     
     if not user_message:
         return jsonify({'error': 'No message provided'}), 400
     
-    bot_response = get_openai_response(client, user_message, mode)
-    return jsonify({'response': bot_response})
+    email_reply = generate_email_reply(client, user_message, tone)
+    return jsonify({'response': email_reply})
 
 
 if __name__ == '__main__':
