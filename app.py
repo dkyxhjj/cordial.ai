@@ -52,6 +52,7 @@ def generate_email_reply(client, user_message, tone="professional"):
     - Format as plain text that can be directly copied into an email client
     - Do not use markdown formatting
     - Do not include "Subject:" line
+    - If the input doesn't look like a email, just return please enter a valid email, some examples might include "https://cordial-ai.onrender.com/", "hello world"
     
     Original message:
     {original_email}
