@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAI Chatbot</title>
+    <style type="text/css">
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .input-area {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        #message {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            min-height: 100px;
+            resize: vertical;
+            font-family: inherit;
+            font-size: 1em;
+        }
+        .submit-button {
+            align-self: flex-end;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .response {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            white-space: pre-line;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+        .mode-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .mode-button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-weight: bold;
+        }
+        .mode-button.active {
+            box-shadow: 0 0 0 2px #000;
+        }
+        .mode-button.empathy {
+            background-color: #FFD1DC; /* Light pink */
+            color: #333;
+        }
+        .mode-button.professional {
+            background-color: #ADD8E6; /* Light blue */
+            color: #333;
+        }
+        .mode-button.storytelling {
+            background-color: #90EE90; /* Light green */
+            color: #333;
+        }
+        .mode-button.emotional {
+            background-color: #E6E6FA; /* Lavender */
+            color: #333;
+        }
+        .mode-button.default {
+            background-color: #F5F5F5; /* Light gray */
+            color: #333;
+        }
+        .mode-description {
+            margin-top: 5px;
+            font-size: 0.9em;
+            color: #666;
+            display: none;
+        }
+        .mode-description.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OpenAI Humanizer Tool</h1>
+        <p>Enter your text below and select a humanizing mode to get alternative phrasings.</p>
+        
+        <div class="mode-buttons">
+            <button class="mode-button default active" data-mode="default">🤖 Default</button>
+            <button class="mode-button empathy" data-mode="empathy">🧠 Empathy</button>
+            <button class="mode-button professional" data-mode="professional">🤝 Professional Warmth</button>
+            <button class="mode-button storytelling" data-mode="storytelling">📚 Storytelling</button>
+        </div>
+        
+        <div class="mode-description default active">
+            Generate natural, human-sounding alternatives to your text.
+        </div>
+        <div class="mode-description empathy">
+            Rewrite with warmth and understanding, acknowledging emotions and showing support.
+        </div>
+        <div class="mode-description professional">
+            Rephrase to sound constructive, supportive, and professionally encouraging.
+        </div>
+        <div class="mode-description storytelling">
+            Turn factual explanations into relatable stories using metaphors and analogies.
+        </div>
+        <div class="mode-description emotional">
+            Reword with compassion for difficult situations, offering kindness and clarity.
+        </div>
+        
+        <div class="input-area">
+            <textarea id="message" placeholder="Enter your text here... (supports paragraphs)"></textarea>
+            <div class="submit-button">
+                <button onclick="sendMessage()">Submit</button>
+            </div>
+        </div>
+        
+        <div id="loading" class="loading" style="display: none;">Processing your request...</div>
+        <div id="response" class="response" style="display: none;"></div>
+    </div>
+
+    <script>
+        let currentMode = "default";
+        
+        // Set up mode button listeners
+        document.querySelectorAll('.mode-button').forEach(button => {
+            button.addEventListener('click', function() {
+                // Update active button
+                document.querySelectorAll('.mode-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                this.classList.add('active');
+                
+                // Update active description
+                const mode = this.getAttribute('data-mode');
+                currentMode = mode;
+                
+                document.querySelectorAll('.mode-description').forEach(desc => {
+                    desc.classList.remove('active');
+                });
+                document.querySelector(`.mode-description.${mode}`).classList.add('active');
+            });
+        });
+        
+        async function sendMessage() {
+            const message = document.getElementById('message').value.trim();
+            if (!message) {
+                alert('Please enter a sentence');
+                return;
+            }
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('response').style.display = 'none';
+            
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        message: message,
+                        mode: currentMode
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('response').style.display = 'block';
+                document.getElementById('response').textContent = data.response;
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('response').style.display = 'block';
+                document.getElementById('response').textContent = `Error: ${error.message}`;
+            }
+        }
+        
+        // Allow Enter key to submit
+        document.getElementById('message').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
