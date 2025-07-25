@@ -25,7 +25,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // Execute the rewrite function in the content script
+            // First inject the content script
+            await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                files: ['content.js']
+            });
+            
+            // Then execute the rewrite function
             await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 function: executeRewrite,

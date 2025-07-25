@@ -4,13 +4,6 @@
   "version": "1.0",
   "description": "Automatically rewrites/drafts your emails with multiple tone options.",
   "permissions": ["scripting", "activeTab"],
-  "content_scripts": [
-    {
-      "matches": ["https://mail.google.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
