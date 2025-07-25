@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Function to be injected into the content script
 function executeRewrite(tone) {
     // This function will be executed in the context of the Gmail page
-    const API_BASE_URL = 'http://localhost:5000';
+    const API_BASE_URL = 'https://cordial-ai.onrender.com/';
     
     async function getEmailEditor() {
         const selectors = [
@@ -141,6 +141,39 @@ function executeRewrite(tone) {
         return threadContext.trim();
     }
     
+    function isNewEmail() {
+        const editor = getEmailEditor();
+        if (!editor) return false;
+
+        // Simple approach: check if we can find any previous message content in the DOM
+        // This works for replies to any type of message (starred, regular, etc.)
+        const previousMessages = document.querySelectorAll('.ii.gt .a3s, .adn .a3s, .gs .a3s');
+        const hasPreviousMessages = previousMessages.length > 0;
+        
+        // Check subject line for reply indicators
+        const subjectInput = document.querySelector('input[name="subjectbox"]');
+        const isReplySubject = subjectInput && subjectInput.value && 
+            (subjectInput.value.toLowerCase().startsWith('re:') || 
+             subjectInput.value.toLowerCase().startsWith('fwd:') ||
+             subjectInput.value.toLowerCase().startsWith('fw:'));
+        
+        // Check if we're in a conversation view (has thread indicators)
+        const conversationView = document.querySelector('.if, .nH[role="main"] .adn');
+        const inConversationView = !!conversationView;
+        
+        // Debug logging
+        console.log('popup.js isNewEmail debug:', {
+            hasPreviousMessages,
+            isReplySubject,
+            inConversationView,
+            subjectValue: subjectInput?.value,
+            previousMessagesCount: previousMessages.length
+        });
+        
+        // It's a new email if there are no previous messages AND no reply subject
+        return !hasPreviousMessages && !isReplySubject;
+    }
+    
     async function rewriteEmail() {
         try {
             const editor = await getEmailEditor();
@@ -159,15 +192,16 @@ function executeRewrite(tone) {
                 throw new Error('Please write more content to rewrite!');
             }
             
-            // Get the full email thread context
-            const threadContext = getEmailThreadContext();
+            // Check if this is a new email or reply
+            const isNew = isNewEmail();
+            const threadContext = isNew ? '' : getEmailThreadContext();
             
-            // Construct the message with full context
+            // Construct the message with appropriate context
             let fullMessage;
             if (threadContext) {
-                fullMessage = `Email Thread Context:\n${threadContext}\n\n--- My Draft Reply ---\n${originalText}\n\nMy reply should: Rewrite my draft reply to be more professional and well-structured, taking into account the context of the email thread above.`;
+                fullMessage = `Email Thread Context:\n${threadContext}\n\n--- My Draft Reply ---\n${originalText}\n\nPlease rewrite my draft reply to be more professional and well-structured, taking into account the context of the email thread above.`;
             } else {
-                fullMessage = `Original email:\n${originalText}\n\nMy reply should: Rewrite this email to be more professional and well-structured.`;
+                fullMessage = `My draft email:\n${originalText}\n\nPlease rewrite this email to be more professional and well-structured. This is a new email I'm sending out (not a reply), so make it appropriate for reaching out or initiating communication.`;
             }
             
             // Send to Flask API

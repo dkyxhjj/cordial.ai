@@ -1,5 +1,3 @@
-// Content script for Gmail integration
-console.log('Smart Email Rewriter extension loaded');
 
 // Configuration
 const API_BASE_URL = 'https://cordial-ai.onrender.com/'; // Change this to your deployed URL when ready
@@ -78,6 +76,41 @@ function getEmailThreadContext() {
   return threadContext.trim();
 }
 
+function isNewEmail() {
+  const editor = getEmailEditor();
+  if (!editor) return false;
+
+  // Simple approach: check if we can find any previous message content in the DOM
+  // This works for replies to any type of message (starred, regular, etc.)
+  const previousMessages = document.querySelectorAll('.ii.gt .a3s, .adn .a3s, .gs .a3s');
+  const hasPreviousMessages = previousMessages.length > 0;
+  
+  // Check subject line for reply indicators
+  const subjectInput = document.querySelector('input[name="subjectbox"]');
+  const isReplySubject = subjectInput && subjectInput.value && 
+    (subjectInput.value.toLowerCase().startsWith('re:') || 
+     subjectInput.value.toLowerCase().startsWith('fwd:') ||
+     subjectInput.value.toLowerCase().startsWith('fw:'));
+  
+  // Check if we're in a conversation view (has thread indicators)
+  const conversationView = document.querySelector('.if, .nH[role="main"] .adn');
+  const inConversationView = !!conversationView;
+  
+  // Debug logging
+  console.log('isNewEmail debug:', {
+    hasPreviousMessages,
+    isReplySubject,
+    inConversationView,
+    subjectValue: subjectInput?.value,
+    previousMessagesCount: previousMessages.length
+  });
+  
+  // It's a new email if there are no previous messages AND no reply subject
+  return !hasPreviousMessages && !isReplySubject;
+}
+
+
+
 function waitForEditor(timeout = 10000) {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
@@ -113,16 +146,20 @@ async function rewriteEmail(tone = 'professional') {
     // Show loading indicator
     showNotification('Rewriting your email...', 'info');
     
-    // Get the full email thread context
-    const threadContext = getEmailThreadContext();
+    // Check if this is a new email or reply
+    // Inside rewriteEmail():
+    const isNew = isNewEmail();
+    const threadContext = isNew ? '' : getEmailThreadContext();
+
     
-    // Construct the message with full context
+    // Construct the message with appropriate context
     let fullMessage;
     if (threadContext) {
-      fullMessage = `Email Thread Context:\n${threadContext}\n\n--- My Draft Reply ---\n${originalText}\n\nMy reply should: Rewrite my draft reply to be more professional and well-structured, taking into account the context of the email thread above.`;
+      fullMessage = `Email Thread Context:\n${threadContext}\n\n--- My Draft Reply ---\n${originalText}\n\nPlease rewrite my draft reply to be more professional and well-structured, taking into account the context of the email thread above.`;
     } else {
-      fullMessage = `Original email:\n${originalText}\n\nMy reply should: Rewrite this email to be more professional and well-structured.`;
+      fullMessage = `My draft email:\n${originalText}\n\nPlease rewrite this email to be more professional and well-structured. This is a new email I'm sending out (not a reply), so make it appropriate for reaching out or initiating communication.`;
     }
+    
     
     // Send to Flask API
     const response = await fetch(`${API_BASE_URL}/generate-reply`, {
