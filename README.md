@@ -1,3 +1,1 @@
-gpt wrapper to contextualize workflow of a full stack app + deployment
-
-is this the next billionaire dollar startup!!??!
+ai assistant tool to write emails - chrome extension
