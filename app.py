@@ -2,6 +2,7 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
 
 load_dotenv('.env.local')
 api_key = os.getenv('OPENAI_API_KEY') 
@@ -24,7 +25,7 @@ def generate_email_reply(client, user_message, tone="professional"):
         "professional": "Use a balanced professional tone with appropriate formality while being personable.",
         "friendly": "Use a warm, conversational tone while maintaining professionalism.",
         "formal": "Use a highly formal tone appropriate for official business communications.",
-        "concise": "Be brief and to the point while addressing all key points."
+        "concise": "Be brief and to the point while addressing all key points.",
     }
     
     selected_tone = tone_instructions.get(tone, tone_instructions["professional"])
@@ -81,6 +82,7 @@ def generate_email_reply(client, user_message, tone="professional"):
 
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for Chrome extension
 
 @app.route('/', methods=['GET'])
 def index():

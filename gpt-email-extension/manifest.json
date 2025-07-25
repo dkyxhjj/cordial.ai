@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Smart Email Rewriter",
+  "version": "1.0",
+  "description": "Automatically rewrites your emails using GPT with multiple tone options.",
+  "permissions": ["scripting", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "communication.png",
+      "48": "communication.png",
+      "128": "communication.png"
+    }
+  },
+  "icons": {
+    "16": "communication.png",
+    "48": "communication.png",
+    "128": "communication.png"
+  }
+}
