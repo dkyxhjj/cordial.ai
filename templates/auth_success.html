@@ -67,6 +67,11 @@
                 throw new Error('No parent window found');
             }
             
+            // Check if opener exists and is not closed
+            if (!window.opener || window.opener.closed) {
+                throw new Error('Parent window is not available or was closed');
+            }
+            
             // Send message with strict origin validation
             // Only send to chrome-extension origins for security
             const allowedOrigins = [
@@ -77,8 +82,15 @@
             let targetOrigin = window.location.origin;
             
             // Check if opener is a chrome extension
-            if (window.opener && window.opener.location && window.opener.location.protocol === 'chrome-extension:') {
-                targetOrigin = window.opener.location.origin;
+            try {
+                if (window.opener && window.opener.location && window.opener.location.protocol === 'chrome-extension:') {
+                    targetOrigin = window.opener.location.origin;
+                }
+            } catch (crossOriginError) {
+                // Cross-origin access blocked, use '*' for chrome extensions
+                if (window.opener) {
+                    targetOrigin = '*';
+                }
             }
             
             window.opener.postMessage({
