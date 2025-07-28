@@ -1,6 +1,6 @@
 
 // Load configuration or use defaults
-const API_BASE_URL = window.CONFIG?.API_BASE_URL || 'https://cordial-ai.onrender.com/';
+const API_BASE_URL = window.CONFIG?.API_BASE_URL || 'https://cordial-ai.onrender.com';
 const GMAIL_SELECTORS = window.CONFIG?.GMAIL_SELECTORS || [
   '[contenteditable="true"]',
   'div[role="textbox"]',

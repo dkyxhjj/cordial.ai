@@ -33,6 +33,7 @@ Session(app)
 CORS(app, 
      origins=[
          "chrome-extension://*",  # Allow Chrome extensions
+         "https://mail.google.com",  # Gmail domain
          "https://cordial-ai.onrender.com",  # Your production domain
          "http://localhost:5000",  # Local development
          "http://127.0.0.1:5000"   # Local development
