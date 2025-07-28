@@ -1,16 +1,10 @@
 ai assistant tool to write emails - chrome extension
 
-env.example should look like this
-OpenAI API Configuration
-OPENAI_API_KEY=xxxxxx
+#env.example should look like this
 
-Google OAuth Configuration
+OPENAI_API_KEY=xxxxxx
 GOOGLE_CLIENT_ID=xxxxxx
 GOOGLE_CLIENT_SECRET=xxxxxx
-
-Flask Session Secret Key
 SECRET_KEY=xxxxxx
-
-SUPABASE
 SUPABASE_URL=xxxxxx
 SUPABASE_KEY=xxxxxx
