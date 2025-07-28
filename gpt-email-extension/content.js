@@ -1,9 +1,7 @@
 
-// Configuration
-const API_BASE_URL = 'https://cordial-ai.onrender.com/'; // Change this to your deployed URL when ready
-
-// Gmail editor selectors
-const GMAIL_SELECTORS = [
+// Load configuration or use defaults
+const API_BASE_URL = window.CONFIG?.API_BASE_URL || 'https://cordial-ai.onrender.com/';
+const GMAIL_SELECTORS = window.CONFIG?.GMAIL_SELECTORS || [
   '[contenteditable="true"]',
   'div[role="textbox"]',
   '.Am.Al.editable',
@@ -11,54 +9,73 @@ const GMAIL_SELECTORS = [
   'div[aria-label*="Message Body"]'
 ];
 
+// Cache for DOM elements to improve performance
+let cachedEditor = null;
+let lastEditorCheck = 0;
+const CACHE_DURATION = 2000; // 2 seconds
+
 function getEmailEditor() {
-  for (const selector of GMAIL_SELECTORS) {
+  const now = Date.now();
+  
+  // Return cached editor if valid and still in DOM
+  if (cachedEditor && (now - lastEditorCheck) < CACHE_DURATION && document.contains(cachedEditor)) {
+    return cachedEditor;
+  }
+  
+  // Find editor using optimized selector order (most common first)
+  const optimizedSelectors = [
+    'div[role="textbox"][contenteditable="true"]', // Most specific Gmail compose
+    '[contenteditable="true"]',
+    '.Am.Al.editable',
+    'div[aria-label*="Message Body"]',
+    '.ii.gt .a3s'
+  ];
+  
+  for (const selector of optimizedSelectors) {
     const editor = document.querySelector(selector);
     if (editor && editor.isContentEditable) {
+      cachedEditor = editor;
+      lastEditorCheck = now;
       return editor;
     }
   }
+  
+  cachedEditor = null;
   return null;
 }
 
 function getEmailThreadContext() {
-  // Try to capture the full email conversation thread
-  const threadSelectors = [
-    '.ii.gt',  // Gmail conversation messages
-    '.adn.ads', // Gmail message containers
-    '.h7', // Gmail message content
-    '.ii.gt .a3s', // Gmail message body
-    '[data-message-id]', // Gmail message containers with IDs
-    '.nH .if', // Gmail conversation view
-    '.Ar.Au .h7' // Gmail expanded messages
+  const threadSelectors = window.CONFIG?.THREAD_SELECTORS || [
+    '.ii.gt',
+    '.adn.ads',
+    '.h7',
+    '.ii.gt .a3s',
+    '[data-message-id]',
+    '.nH .if',
+    '.Ar.Au .h7'
   ];
   
   let threadContext = '';
-  
-  // Try to get the conversation thread
   for (const selector of threadSelectors) {
     const messages = document.querySelectorAll(selector);
     if (messages.length > 0) {
       messages.forEach((message, index) => {
         const messageText = message.innerText || message.textContent;
         if (messageText && messageText.trim().length > 20) {
-          // Skip if it's likely the compose window itself
           if (!message.isContentEditable && !message.querySelector('[contenteditable="true"]')) {
             threadContext += `\n--- Message ${index + 1} ---\n${messageText.trim()}\n`;
           }
         }
       });
-      break; // Use the first selector that finds messages
+      break;
     }
   }
-  
-  // If no thread context found, try to get subject line
   if (!threadContext.trim()) {
-    const subjectSelectors = [
-      '.hP', // Gmail subject line
-      '.bog', // Gmail subject in compose
-      '[name="subjectbox"]', // Gmail subject input
-      '.aoT' // Gmail subject area
+    const subjectSelectors = window.CONFIG?.SUBJECT_SELECTORS || [
+      '.hP',
+      '.bog',
+      '[name="subjectbox"]',
+      '.aoT'
     ];
     
     for (const selector of subjectSelectors) {
@@ -80,24 +97,15 @@ function isNewEmail() {
   const editor = getEmailEditor();
   if (!editor) return false;
 
-  // Simple approach: check if we can find any previous message content in the DOM
-  // This works for replies to any type of message (starred, regular, etc.)
   const previousMessages = document.querySelectorAll('.ii.gt .a3s, .adn .a3s, .gs .a3s');
   const hasPreviousMessages = previousMessages.length > 0;
-  
-  // Check subject line for reply indicators
   const subjectInput = document.querySelector('input[name="subjectbox"]');
   const isReplySubject = subjectInput && subjectInput.value && 
     (subjectInput.value.toLowerCase().startsWith('re:') || 
      subjectInput.value.toLowerCase().startsWith('fwd:') ||
      subjectInput.value.toLowerCase().startsWith('fw:'));
-  
-  // Check if we're in a conversation view (has thread indicators)
   const conversationView = document.querySelector('.if, .nH[role="main"] .adn');
   const inConversationView = !!conversationView;
-  
-  
-  // It's a new email if there are no previous messages AND no reply subject
   return !hasPreviousMessages && !isReplySubject;
 }
 
@@ -105,17 +113,36 @@ function isNewEmail() {
 
 function waitForEditor(timeout = 10000) {
   return new Promise((resolve, reject) => {
-    const startTime = Date.now();
-    const interval = setInterval(() => {
+    // First try to get editor immediately
+    const editor = getEmailEditor();
+    if (editor) {
+      resolve(editor);
+      return;
+    }
+    
+    // Use MutationObserver for more efficient DOM watching
+    const observer = new MutationObserver(() => {
       const editor = getEmailEditor();
       if (editor) {
-        clearInterval(interval);
+        observer.disconnect();
         resolve(editor);
-      } else if (Date.now() - startTime > timeout) {
-        clearInterval(interval);
-        reject(new Error('Email editor not found within timeout'));
       }
-    }, 500);
+    });
+    
+    // Watch for changes in compose area
+    const composeArea = document.querySelector('.nH[role="main"]') || document.body;
+    observer.observe(composeArea, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['contenteditable', 'role']
+    });
+    
+    // Fallback timeout
+    setTimeout(() => {
+      observer.disconnect();
+      reject(new Error('Email editor not found within timeout'));
+    }, timeout);
   });
 }
 
@@ -126,25 +153,25 @@ async function rewriteEmail(tone = 'professional') {
     
     if (!originalText || originalText.trim().length === 0) {
       showNotification('Please write some content in the email first!', 'warning');
-      return;
+      return {
+        success: false,
+        error: 'Please write some content in the email first!'
+      };
     }
     
-    // Check if the text is just whitespace or very short
     if (originalText.trim().length < 5) {
       showNotification('Please write more content to rewrite!', 'warning');
-      return;
+      return {
+        success: false,
+        error: 'Please write more content to rewrite!'
+      };
     }
 
-    // Show loading indicator
     showNotification('Rewriting your email...', 'info');
     
-    // Check if this is a new email or reply
-    // Inside rewriteEmail():
     const isNew = isNewEmail();
     const threadContext = isNew ? '' : getEmailThreadContext();
 
-    
-    // Construct the message with appropriate context
     let fullMessage;
     if (threadContext) {
       fullMessage = `Email Thread Context:\n${threadContext}\n\n--- My Draft Reply ---\n${originalText}\n\nPlease rewrite my draft reply to be more professional and well-structured, taking into account the context of the email thread above.`;
@@ -152,8 +179,6 @@ async function rewriteEmail(tone = 'professional') {
       fullMessage = `My draft email:\n${originalText}\n\nPlease rewrite this email to be more professional and well-structured. This is a new email I'm sending out (not a reply), so make it appropriate for reaching out or initiating communication.`;
     }
     
-    
-    // Send to Flask API (no auth required for testing)
     const response = await fetch(`${API_BASE_URL}/generate-reply`, {
       method: 'POST',
       headers: {
@@ -166,36 +191,48 @@ async function rewriteEmail(tone = 'professional') {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorMessage = `Server error: ${response.status}`;
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
     
     if (data.response) {
-      // Replace the content in the editor
-      if (editor.innerHTML) {
-        editor.innerHTML = data.response.replace(/\n/g, '<br>');
+      // Sanitize and safely insert the response to prevent XSS
+      const sanitizedResponse = data.response.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      
+      if (editor.isContentEditable && editor.innerHTML !== undefined) {
+        // For contenteditable elements, preserve line breaks securely
+        editor.innerHTML = sanitizedResponse.replace(/\n/g, '<br>');
       } else {
+        // For regular text inputs, use textContent for safety
         editor.textContent = data.response;
       }
-      
-      // Trigger input event to notify Gmail of the change
       editor.dispatchEvent(new Event('input', { bubbles: true }));
       editor.dispatchEvent(new Event('change', { bubbles: true }));
+      
+      showNotification('Email rewritten successfully!', 'success');
+      
+      return {
+        success: true,
+        message: 'Email rewritten successfully!'
+      };
     } else {
       throw new Error('No response received from API');
     }
   } catch (error) {
-    showNotification(`Error: ${error.message}`, 'error');
+    const errorMessage = `Error: ${error.message}`;
+    showNotification(errorMessage, 'error');
+    return {
+      success: false,
+      error: errorMessage
+    };
   }
 }
 
 function showNotification(message, type = 'info') {
-  // Remove existing notifications
   const existingNotifications = document.querySelectorAll('.email-rewriter-notification');
   existingNotifications.forEach(notification => notification.remove());
-  
-  // Create notification element
   const notification = document.createElement('div');
   notification.className = 'email-rewriter-notification';
   notification.style.cssText = `
@@ -219,8 +256,6 @@ function showNotification(message, type = 'info') {
     border: 1px solid #e5e5e5;
     animation: slideInScale 0.2s ease-out;
   `;
-  
-  // Add animation keyframes
   if (!document.querySelector('#email-rewriter-animations')) {
     const style = document.createElement('style');
     style.id = 'email-rewriter-animations';
@@ -248,8 +283,6 @@ function showNotification(message, type = 'info') {
     `;
     document.head.appendChild(style);
   }
-  
-  // Set border color based on type
   const borderColors = {
     success: '#10b981',
     error: '#ef4444',
@@ -259,8 +292,6 @@ function showNotification(message, type = 'info') {
   notification.style.borderLeftColor = borderColors[type] || borderColors.info;
   notification.style.borderLeftWidth = '3px';
   notification.style.borderLeftStyle = 'solid';
-  
-  // Simple text icons
   const icons = {
     success: '✓',
     error: '✕',
@@ -276,8 +307,6 @@ function showNotification(message, type = 'info') {
   `;
   
   document.body.appendChild(notification);
-  
-  // Auto-remove after 4 seconds
   setTimeout(() => {
     if (notification.parentNode) {
       notification.style.animation = 'slideOutScale 0.3s ease-in';
@@ -286,9 +315,7 @@ function showNotification(message, type = 'info') {
   }, 4000);
 }
 
-// Add floating action button
 function createFloatingButton() {
-  // Remove existing button if any
   const existingButton = document.querySelector('.email-rewriter-fab');
   if (existingButton) {
     existingButton.remove();
@@ -335,7 +362,6 @@ function createFloatingButton() {
   document.body.appendChild(fab);
 }
 
-// Keyboard shortcut listener
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.shiftKey && e.key === 'R') {
     e.preventDefault();
@@ -343,17 +369,11 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Initialize when DOM is ready
 function initialize() {
-  // Only run on Gmail
   if (window.location.hostname === 'mail.google.com') {
-    
-    // Wait a bit for Gmail to load
     setTimeout(() => {
       createFloatingButton();
     }, 2000);
-    
-    // Re-create button when navigating within Gmail
     let lastUrl = location.href;
     new MutationObserver(() => {
       const url = location.href;
@@ -365,7 +385,6 @@ function initialize() {
   }
 }
 
-// Start initialization
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initialize);
 } else {

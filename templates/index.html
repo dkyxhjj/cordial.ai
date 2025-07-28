@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Removed Supabase CDN - using secure server-side proxy instead -->
     <style>
         * {
             margin: 0;
@@ -147,73 +147,6 @@
         </div>
     </div>
     
-    <script>
-        let supabase;
-        
-        // Initialize Supabase client with config from backend
-        async function initSupabase() {
-            try {
-                const response = await fetch('/config');
-                const config = await response.json();
-                supabase = window.supabase.createClient(config.SUPABASE_URL, config.SUPABASE_KEY);
-            } catch (error) {
-                console.error('Failed to load config:', error);
-            }
-        }
-        
-        // Initialize on page load
-        initSupabase();
-        
-        const form = document.getElementById('waitlistForm');
-        const emailInput = document.getElementById('email');
-        const submitBtn = document.getElementById('submitBtn');
-        const messageDiv = document.getElementById('message');
-        
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const email = emailInput.value.trim();
-            if (!email) return;
-            
-            // Check if Supabase is initialized
-            if (!supabase) {
-                messageDiv.innerHTML = '<div class="error">Please wait a moment and try again.</div>';
-                return;
-            }
-            
-            // Disable form
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Joining...';
-            messageDiv.innerHTML = '';
-            
-            try {
-                const { data, error } = await supabase
-                    .from('waitlist')
-                    .insert([
-                        { 
-                            email: email,
-                            created_at: new Date().toISOString()
-                        }
-                    ]);
-                
-                if (error) {
-                    if (error.code === '23505') {
-                        messageDiv.innerHTML = '<div class="error">You\'re already on the waitlist!</div>';
-                    } else {
-                        messageDiv.innerHTML = '<div class="error">Something went wrong. Please try again.</div>';
-                    }
-                } else {
-                    messageDiv.innerHTML = '<div class="success">Thanks! You\'re on the waitlist.</div>';
-                    emailInput.value = '';
-                }
-            } catch (err) {
-                messageDiv.innerHTML = '<div class="error">Something went wrong. Please try again.</div>';
-            }
-            
-            // Re-enable form
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Join waitlist';
-        });
-    </script>
+    <script src="{{ url_for('static', filename='js/waitlist.js') }}"></script>
 </body>
 </html>

@@ -15,6 +15,7 @@ load_dotenv('.env.local')
 
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4-mini')  # Default to gpt-4-mini if not specified
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 api_key = os.getenv('OPENAI_API_KEY') 
 client = OpenAI(api_key=api_key)
@@ -27,7 +28,17 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_TYPE'] = 'filesystem'
 Session(app)
-CORS(app, supports_credentials=True)  # Enable CORS for Chrome extension with credentials
+# Configure CORS with specific origins for security
+CORS(app, 
+     origins=[
+         "chrome-extension://*",  # Allow Chrome extensions
+         "https://cordial-ai.onrender.com",  # Your production domain
+         "http://localhost:5000",  # Local development
+         "http://127.0.0.1:5000"   # Local development
+     ],
+     supports_credentials=True,
+     allow_headers=['Content-Type', 'Authorization'],
+     methods=['GET', 'POST', 'OPTIONS'])
 client_id = os.getenv('GOOGLE_CLIENT_ID')
 client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
 # OAuth configuration
@@ -111,14 +122,16 @@ def generate_email_reply(client, user_message, tone="professional"):
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",  
+            model=OPENAI_MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=800,
             temperature=0.7,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"Error: {e}"
+        # Log detailed error server-side, return generic message to user
+        print(f"OpenAI API error: {e}")
+        return "Error: Unable to generate email response. Please try again."
 
 
 
@@ -205,33 +218,22 @@ def auth_callback():
             }
             
             # For Chrome extension, return a success page that can communicate back
-            return f'''
-            <html>
-            <body>
-                <script>
-                    try {{
-                        const userInfo = {json.dumps(user_info)};
-                        window.opener.postMessage({{
-                            type: 'auth_success',
-                            user: userInfo
-                        }}, '*');
-                        setTimeout(() => {{
-                            window.close();
-                        }}, 1000);
-                    }} catch (e) {{
-                        document.body.innerHTML = '<p>Authentication successful! You can close this window.</p>';
-                    }}
-                </script>
-                <p>Authentication successful! You can close this window.</p>
-            </body>
-            </html>
-            '''
+            # Ensure user_info is JSON serializable
+            safe_user_info = {
+                'email': user_info.get('email', ''),
+                'name': user_info.get('name', ''),
+                'picture': user_info.get('picture', ''),
+                'authenticated': True
+            }
+            return render_template('auth_success.html', user_info=safe_user_info)
             
         except requests.exceptions.RequestException as e:
+            print(f"OAuth request error: {e}")  # Log server-side
             return jsonify({'error': 'Failed to fetch user information'}), 500
             
     except Exception as e:
-        return jsonify({'error': f'Authentication failed: {str(e)}'}), 400
+        print(f"OAuth error: {e}")  # Log server-side  
+        return jsonify({'error': 'Authentication failed'}), 400
 
 @app.route('/auth/logout')
 def logout():
@@ -268,20 +270,58 @@ def get_credits():
     else:
         return jsonify({'error': 'User not found'}), 404
 
-@app.route('/config', methods=['GET'])
-def config():
-    return jsonify({
-        'SUPABASE_URL': SUPABASE_URL,
-        'SUPABASE_KEY': SUPABASE_KEY
-    })
+# Config endpoint removed for security - credentials now embedded in templates
+
 
 @app.route('/', methods=['GET'])
 def index():
     return render_template('index.html')
 
+@app.route('/waitlist', methods=['POST'])
+def add_to_waitlist():
+    try:
+        data = request.json
+        
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+            
+        email = data.get('email', '').strip()
+        
+        # Validate email
+        if not email:
+            return jsonify({'error': 'Email is required'}), 400
+        
+        # Basic email validation
+        import re
+        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+            return jsonify({'error': 'Invalid email format'}), 400
+        
+        # Insert into Supabase via server-side (secure)
+        result = supabase.table('waitlist').insert({
+            'email': email,
+            'created_at': datetime.utcnow().isoformat()
+        }).execute()
+        
+        if result.data:
+            return jsonify({'success': True, 'message': 'Added to waitlist successfully'})
+        else:
+            return jsonify({'error': 'Failed to add to waitlist'}), 500
+            
+    except Exception as e:
+        # Check for duplicate email error
+        if 'duplicate key value' in str(e) or '23505' in str(e):
+            return jsonify({'error': 'Email already on waitlist'}), 409
+        
+        # Log server-side only for debugging, don't expose to user
+        import traceback
+        print(f"Waitlist error: {e}")
+        print(traceback.format_exc())
+        return jsonify({'error': 'Server error occurred'}), 500
+
+
 @app.route('/generate-reply', methods=['POST'])
 def generate_reply():
-    # COMMENTED OUT FOR TESTING - NO AUTH RESTRICTIONS
+    # COMMENTED OUT FOR DEVELOPMENT - NO AUTH OR CREDIT RESTRICTIONS
     # # Check authentication from session first
     # user = session.get('user')
     # 
@@ -298,12 +338,29 @@ def generate_reply():
     user_message = data.get('message')
     tone = data.get('tone', 'professional')
     
+    # Input validation
     if not user_message:
         return jsonify({'error': 'No message provided'}), 400
     
-    # COMMENTED OUT FOR TESTING - NO CREDIT RESTRICTIONS
+    if not isinstance(user_message, str):
+        return jsonify({'error': 'Message must be a string'}), 400
+    
+    user_message = user_message.strip()
+    if len(user_message) < 3:
+        return jsonify({'error': 'Message too short. Please provide at least 3 characters.'}), 400
+    
+    if len(user_message) > 5000:
+        return jsonify({'error': 'Message too long. Please keep it under 5000 characters.'}), 400
+    
+    # Validate tone parameter
+    valid_tones = ['professional', 'friendly', 'formal', 'concise']
+    if tone not in valid_tones:
+        tone = 'professional'  # Default to professional if invalid tone provided
+    
+    # COMMENTED OUT FOR DEVELOPMENT - NO CREDIT RESTRICTIONS
     # # Check user credits in Supabase
     # email = user.get('email')
+    # credits = 0
     # if email:
     #     response = supabase.table('users').select('credits').eq('email', email).execute()
     #     if response.data and len(response.data) > 0:
@@ -315,12 +372,18 @@ def generate_reply():
     
     email_reply = generate_email_reply(client, user_message, tone)
     
-    # COMMENTED OUT FOR TESTING - NO CREDIT DEDUCTION
+    # COMMENTED OUT FOR DEVELOPMENT - NO CREDIT DEDUCTION
     # # Deduct credit on successful generation
     # if email and email_reply and not email_reply.startswith('Error:'):
     #     supabase.table('users').update({
     #         'credits': credits - 1
     #     }).eq('email', email).execute()
+    #     
+    #     # Return remaining credits in response
+    #     return jsonify({
+    #         'response': email_reply,
+    #         'credits_remaining': credits - 1
+    #     })
     
     return jsonify({'response': email_reply})
 

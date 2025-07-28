@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication Successful</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f8f9fa;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .success-message {
+            color: #16a34a;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #e5e7eb;
+            border-top: 3px solid #16a34a;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <div class="success-message">Authentication successful!</div>
+        <p>You can close this window.</p>
+    </div>
+    
+    <script>
+        try {
+            // Check if user_info was passed from backend
+            {% if user_info %}
+                const userInfo = {{ user_info|tojson|safe }};
+                
+                // Validate that we have user info
+                if (!userInfo || typeof userInfo !== 'object' || !userInfo.email) {
+                    throw new Error('Invalid user information received');
+                }
+            {% else %}
+                throw new Error('No user information provided');
+            {% endif %}
+            
+            // Check if opener window exists
+            if (!window.opener) {
+                throw new Error('No parent window found');
+            }
+            
+            // Send message with strict origin validation
+            // Only send to chrome-extension origins for security
+            const allowedOrigins = [
+                'chrome-extension://*',
+                window.location.origin
+            ];
+            
+            let targetOrigin = window.location.origin;
+            
+            // Check if opener is a chrome extension
+            if (window.opener && window.opener.location && window.opener.location.protocol === 'chrome-extension:') {
+                targetOrigin = window.opener.location.origin;
+            }
+            
+            window.opener.postMessage({
+                type: 'auth_success',
+                user: userInfo
+            }, targetOrigin);
+            
+            // Wait for acknowledgment or timeout
+            let messageAcknowledged = false;
+            
+            // Listen for acknowledgment from parent
+            const messageHandler = (event) => {
+                if (event.data && event.data.type === 'auth_received') {
+                    messageAcknowledged = true;
+                    window.removeEventListener('message', messageHandler);
+                    window.close();
+                }
+            };
+            
+            window.addEventListener('message', messageHandler);
+            
+            // Fallback: close after 3 seconds if no acknowledgment
+            setTimeout(() => {
+                if (!messageAcknowledged) {
+                    console.warn('No acknowledgment received from parent window');
+                    window.removeEventListener('message', messageHandler);
+                    window.close();
+                }
+            }, 3000);
+            
+        } catch (e) {
+            console.error('Authentication communication failed:', e);
+            // Update UI to show error
+            document.querySelector('.success-message').textContent = 'Authentication completed, but communication failed.';
+            document.querySelector('.spinner').style.display = 'none';
+            
+            // Still close after delay as fallback
+            setTimeout(() => {
+                window.close();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
