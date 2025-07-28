@@ -5,4 +5,3 @@ flask_cors
 authlib
 flask-session
 supabase
-requests
