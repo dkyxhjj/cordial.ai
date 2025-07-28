@@ -1,7 +1,17 @@
 // Popup script for Smart Email Rewriter
+const API_BASE_URL = 'https://cordial-ai.onrender.com/';
+
 document.addEventListener('DOMContentLoaded', function() {
     const toneButtons = document.querySelectorAll('.tone-btn');
     const statusDiv = document.getElementById('status');
+    const authSection = document.getElementById('auth-section');
+    const mainSection = document.getElementById('main-section');
+    const loginBtn = document.getElementById('login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const userInfo = document.getElementById('user-info');
+    
+    // Check authentication status on load
+    checkAuthStatus();
     
     // Add click handlers to tone buttons
     toneButtons.forEach(button => {
@@ -10,6 +20,14 @@ document.addEventListener('DOMContentLoaded', function() {
             rewriteEmailWithTone(tone);
         });
     });
+    
+    // Add auth button handlers
+    if (loginBtn) {
+        loginBtn.addEventListener('click', handleLogin);
+    }
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', handleLogout);
+    }
     
     async function rewriteEmailWithTone(tone) {
         try {
@@ -44,7 +62,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 500);
             
         } catch (error) {
-            console.error('Error:', error);
             showStatus('error', 'Failed to rewrite email. Make sure you\'re on Gmail.');
         }
     }
@@ -72,7 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Function to be injected into the content script
 function executeRewrite(tone) {
     // This function will be executed in the context of the Gmail page
-    const API_BASE_URL = 'https://cordial-ai.onrender.com/';
+    const API_BASE_URL = 'https://cordial-ai.onrender.com';
     
     async function getEmailEditor() {
         const selectors = [
@@ -167,14 +184,6 @@ function executeRewrite(tone) {
         const conversationView = document.querySelector('.if, .nH[role="main"] .adn');
         const inConversationView = !!conversationView;
         
-        // Debug logging
-        console.log('popup.js isNewEmail debug:', {
-            hasPreviousMessages,
-            isReplySubject,
-            inConversationView,
-            subjectValue: subjectInput?.value,
-            previousMessagesCount: previousMessages.length
-        });
         
         // It's a new email if there are no previous messages AND no reply subject
         return !hasPreviousMessages && !isReplySubject;
@@ -210,19 +219,32 @@ function executeRewrite(tone) {
                 fullMessage = `My draft email:\n${originalText}\n\nPlease rewrite this email to be more professional and well-structured. This is a new email I'm sending out (not a reply), so make it appropriate for reaching out or initiating communication.`;
             }
             
+            // Get user info from storage for API request
+            const userData = await new Promise((resolve) => {
+                chrome.storage.local.get(['user'], (result) => {
+                    resolve(result.user);
+                });
+            });
+            
             // Send to Flask API
             const response = await fetch(`${API_BASE_URL}/generate-reply`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                credentials: 'include',
                 body: JSON.stringify({
                     message: fullMessage,
-                    tone: tone
+                    tone: tone,
+                    user: userData
                 })
             });
             
             if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                if (response.status === 401 && errorData.auth_required) {
+                    throw new Error('Please sign in to use the email rewriter');
+                }
                 throw new Error(`Server error: ${response.status}`);
             }
             
@@ -240,15 +262,24 @@ function executeRewrite(tone) {
                 editor.dispatchEvent(new Event('input', { bubbles: true }));
                 editor.dispatchEvent(new Event('change', { bubbles: true }));
                 
+                // Update credits in popup if available
+                if (data.credits_remaining !== undefined) {
+                    chrome.storage.local.get(['user'], (result) => {
+                        if (result.user) {
+                            result.user.credits = data.credits_remaining;
+                            chrome.storage.local.set({user: result.user});
+                        }
+                    });
+                }
+                
                 // Show success notification
                 showNotification('Email rewritten successfully!', 'success');
             } else {
                 throw new Error('No response received from API');
             }
         } catch (error) {
-            console.error('Error rewriting email:', error);
             showNotification(`Error: ${error.message}`, 'error');
-            throw error; // Re-throw so popup can handle it
+            throw error;
         }
     }
     
@@ -350,4 +381,161 @@ function executeRewrite(tone) {
     
     // Execute the rewrite
     return rewriteEmail();
+}
+
+// Authentication functions
+async function checkAuthStatus() {
+    try {
+        chrome.storage.local.get(['user'], (result) => {
+            if (result.user && result.user.authenticated) {
+                showAuthenticatedState(result.user);
+            } else {
+                showUnauthenticatedState();
+            }
+        });
+    } catch (error) {
+        showUnauthenticatedState();
+    }
+}
+
+function showAuthenticatedState(user) {
+    const authSection = document.getElementById('auth-section');
+    const mainSection = document.getElementById('main-section');
+    const userInfo = document.getElementById('user-info');
+    
+    if (authSection) {
+        authSection.style.display = 'none';
+    }
+    if (mainSection) {
+        mainSection.style.display = 'block';
+    }
+    if (userInfo) {
+        userInfo.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                ${user.picture ? `<img src="${user.picture}" style="width: 24px; height: 24px; border-radius: 50%;" />` : ''}
+                <span style="font-size: 12px; color: #666;">${user.email}</span>
+                <button id="logout-btn" style="margin-left: auto; padding: 4px 8px; font-size: 10px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Logout</button>
+            </div>
+        `;
+        
+        const logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', handleLogout);
+        }
+    }
+    
+    loadUserCredits();
+}
+
+async function loadUserCredits() {
+    try {
+        chrome.storage.local.get(['user'], async (result) => {
+            if (result.user && result.user.email) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/get-credits`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            user: result.user
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        updateCreditsDisplay(data.credits);
+                    } else {
+                        updateCreditsDisplay(result.user.credits || 10);
+                    }
+                } catch (error) {
+                    updateCreditsDisplay(result.user.credits || 10);
+                }
+            } else {
+                updateCreditsDisplay(0);
+            }
+        });
+    } catch (error) {
+        updateCreditsDisplay(0);
+    }
+}
+
+function updateCreditsDisplay(credits) {
+    const creditsDisplay = document.getElementById('credits-display');
+    const creditsCount = document.getElementById('credits-count');
+    
+    if (creditsDisplay && creditsCount) {
+        creditsCount.textContent = credits;
+        creditsDisplay.style.display = 'block';
+        
+        if (credits <= 3) {
+            creditsDisplay.classList.add('low-credits');
+        } else {
+            creditsDisplay.classList.remove('low-credits');
+        }
+    }
+}
+
+function showUnauthenticatedState() {
+    const authSection = document.getElementById('auth-section');
+    const mainSection = document.getElementById('main-section');
+    
+    if (authSection) {
+        authSection.style.display = 'block';
+    }
+    if (mainSection) {
+        mainSection.style.display = 'none';
+    }
+}
+
+async function handleLogin() {
+    try {
+        // Open OAuth popup
+        const authUrl = `${API_BASE_URL}/auth/login`;
+        const popup = window.open(authUrl, 'oauth', 'width=500,height=600,scrollbars=yes,resizable=yes');
+        
+        // Listen for auth success message
+        const messageListener = (event) => {
+            if (event.data && event.data.type === 'auth_success' && event.data.user) {
+                window.removeEventListener('message', messageListener);
+                popup.close();
+                
+                const user = event.data.user;
+                user.authenticated = true;
+                chrome.storage.local.set({user: user}, () => {
+                    showAuthenticatedState(user);
+                });
+            }
+        };
+        
+        window.addEventListener('message', messageListener);
+        
+        // Check if popup was closed manually
+        const checkClosed = setInterval(() => {
+            if (popup.closed) {
+                clearInterval(checkClosed);
+                window.removeEventListener('message', messageListener);
+            }
+        }, 1000);
+        
+    } catch (error) {
+        showStatus('error', 'Login failed. Please try again.');
+    }
+}
+
+async function handleLogout() {
+    try {
+        chrome.storage.local.remove(['user'], () => {
+            showUnauthenticatedState();
+            showStatus('success', 'Logged out successfully');
+        });
+        
+        fetch(`${API_BASE_URL}/auth/logout`, {
+            method: 'GET',
+            credentials: 'include'
+        }).catch(() => {});
+        
+    } catch (error) {
+        showStatus('error', 'Logout failed');
+    }
 }

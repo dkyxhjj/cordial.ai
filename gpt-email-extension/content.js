@@ -96,14 +96,6 @@ function isNewEmail() {
   const conversationView = document.querySelector('.if, .nH[role="main"] .adn');
   const inConversationView = !!conversationView;
   
-  // Debug logging
-  console.log('isNewEmail debug:', {
-    hasPreviousMessages,
-    isReplySubject,
-    inConversationView,
-    subjectValue: subjectInput?.value,
-    previousMessagesCount: previousMessages.length
-  });
   
   // It's a new email if there are no previous messages AND no reply subject
   return !hasPreviousMessages && !isReplySubject;
@@ -194,7 +186,6 @@ async function rewriteEmail(tone = 'professional') {
       throw new Error('No response received from API');
     }
   } catch (error) {
-    console.error('Error rewriting email:', error);
     showNotification(`Error: ${error.message}`, 'error');
   }
 }
@@ -356,7 +347,6 @@ document.addEventListener('keydown', (e) => {
 function initialize() {
   // Only run on Gmail
   if (window.location.hostname === 'mail.google.com') {
-    console.log('Gmail detected, initializing email rewriter...');
     
     // Wait a bit for Gmail to load
     setTimeout(() => {
