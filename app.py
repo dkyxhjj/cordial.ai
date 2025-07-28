@@ -27,6 +27,7 @@ app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HT
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_TYPE'] = 'filesystem'
+app.config['PREFERRED_URL_SCHEME'] = 'https'
 Session(app)
 # Configure CORS with specific origins for security
 CORS(app, 
@@ -142,16 +143,15 @@ def login():
     state = generate_token()
     session['oauth_state'] = state
     
-    # Define the redirect URI
-    redirect_uri = url_for('auth_callback', _external=True)
+    # Define the redirect URI - force HTTPS for production
+    redirect_uri = url_for('auth_callback', _external=True, _scheme='https')
     
     # Create the authorization URL with necessary parameters
     return google.authorize_redirect(
         redirect_uri=redirect_uri,
         state=state,
         access_type='offline',
-        prompt='select_account',
-        include_granted_scopes='true'
+        prompt='select_account'
     )
 
 @app.route('/auth/callback')
@@ -269,8 +269,6 @@ def get_credits():
         return jsonify({'credits': credits})
     else:
         return jsonify({'error': 'User not found'}), 404
-
-# Config endpoint removed for security - credentials now embedded in templates
 
 
 @app.route('/', methods=['GET'])
