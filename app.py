@@ -312,10 +312,6 @@ def add_to_waitlist():
         if 'duplicate key value' in str(e) or '23505' in str(e):
             return jsonify({'error': 'Email already on waitlist'}), 409
         
-        # Log server-side only for debugging, don't expose to user
-        import traceback
-        print(f"Waitlist error: {e}")
-        print(traceback.format_exc())
         return jsonify({'error': 'Server error occurred'}), 500
 
 
