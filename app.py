@@ -268,6 +268,13 @@ def get_credits():
     else:
         return jsonify({'error': 'User not found'}), 404
 
+@app.route('/config', methods=['GET'])
+def config():
+    return jsonify({
+        'SUPABASE_URL': SUPABASE_URL,
+        'SUPABASE_KEY': SUPABASE_KEY
+    })
+
 @app.route('/', methods=['GET'])
 def index():
     return render_template('index.html')
