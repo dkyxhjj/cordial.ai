@@ -63,6 +63,22 @@
         .header {
             text-align: center;
             margin-bottom: 0.25rem;
+            position: relative;
+        }
+        
+        .credits-display {
+            text-align: center;
+            background-color: var(--primary-color);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-md);
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-top: 1rem;
+        }
+        
+        .credits-display.low-credits {
+            background-color: #ef4444;
         }
         
         h1 {
@@ -332,6 +348,37 @@
     </div>
 
     <script>
+        // Load user credits on page load
+        async function loadUserCredits() {
+            try {
+                const response = await fetch('/auth/user');
+                if (response.ok) {
+                    const userData = await response.json();
+                    if (userData.authenticated && userData.credits !== undefined) {
+                        updateCreditsDisplay(userData.credits);
+                    }
+                }
+            } catch (error) {
+                console.log('No user session or error loading credits');
+            }
+        }
+        
+        // Update credits display
+        function updateCreditsDisplay(credits) {
+            const creditsDisplay = document.getElementById('credits-display');
+            const creditsCount = document.getElementById('credits-count');
+            
+            creditsCount.textContent = credits;
+            creditsDisplay.style.display = 'block';
+            
+            // Add low credits warning
+            if (credits <= 3) {
+                creditsDisplay.classList.add('low-credits');
+            } else {
+                creditsDisplay.classList.remove('low-credits');
+            }
+        }
+        
         // Get current tone from radio buttons
         function getCurrentTone() {
             return document.querySelector('input[name="tone"]:checked').value;
@@ -376,6 +423,11 @@
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('response').style.display = 'block';
                 document.getElementById('response-content').textContent = data.response;
+                
+                // Update credits display if returned
+                if (data.credits_remaining !== undefined) {
+                    updateCreditsDisplay(data.credits_remaining);
+                }
             } catch (error) {
                 // Handle error
                 document.getElementById('loading').style.display = 'none';
@@ -447,6 +499,9 @@
                 generateReply();
             }
         });
+        
+        // Load credits on page load
+        window.addEventListener('load', loadUserCredits);
     </script>
 </body>
 </html>

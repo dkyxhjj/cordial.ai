@@ -2,3 +2,6 @@ flask
 python-dotenv
 openai
 flask_cors
+authlib
+flask-session
+supabase
