@@ -15,7 +15,7 @@ load_dotenv('.env.local')
 
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')  # Default to gpt-4-mini if not specified
+OPENAI_MODEL = "gpt-4.1-mini"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 api_key = os.getenv('OPENAI_API_KEY') 
 client = OpenAI(api_key=api_key)
