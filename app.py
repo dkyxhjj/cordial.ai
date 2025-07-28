@@ -281,44 +281,48 @@ def index():
 
 @app.route('/generate-reply', methods=['POST'])
 def generate_reply():
-    # Check authentication from session first
-    user = session.get('user')
+    # COMMENTED OUT FOR TESTING - NO AUTH RESTRICTIONS
+    # # Check authentication from session first
+    # user = session.get('user')
+    # 
+    # # If no session user, check if user info is provided in request
+    # data = request.json
+    # if not user or not user.get('authenticated'):
+    #     provided_user = data.get('user')
+    #     if provided_user and provided_user.get('email'):
+    #         user = provided_user
+    #     else:
+    #         return jsonify({'error': 'Authentication required', 'auth_required': True}), 401
     
-    # If no session user, check if user info is provided in request
     data = request.json
-    if not user or not user.get('authenticated'):
-        provided_user = data.get('user')
-        if provided_user and provided_user.get('email'):
-            user = provided_user
-        else:
-            return jsonify({'error': 'Authentication required', 'auth_required': True}), 401
-    
     user_message = data.get('message')
     tone = data.get('tone', 'professional')
     
     if not user_message:
         return jsonify({'error': 'No message provided'}), 400
     
-    # Check user credits in Supabase
-    email = user.get('email')
-    if email:
-        response = supabase.table('users').select('credits').eq('email', email).execute()
-        if response.data and len(response.data) > 0:
-            credits = response.data[0].get('credits', 0)
-            if credits <= 0:
-                return jsonify({'error': 'Insufficient credits. Please contact support.'}), 402
-        else:
-            return jsonify({'error': 'User not found in database'}), 404
+    # COMMENTED OUT FOR TESTING - NO CREDIT RESTRICTIONS
+    # # Check user credits in Supabase
+    # email = user.get('email')
+    # if email:
+    #     response = supabase.table('users').select('credits').eq('email', email).execute()
+    #     if response.data and len(response.data) > 0:
+    #         credits = response.data[0].get('credits', 0)
+    #         if credits <= 0:
+    #             return jsonify({'error': 'Insufficient credits. Please contact support.'}), 402
+    #     else:
+    #         return jsonify({'error': 'User not found in database'}), 404
     
     email_reply = generate_email_reply(client, user_message, tone)
     
-    # Deduct credit on successful generation
-    if email and email_reply and not email_reply.startswith('Error:'):
-        supabase.table('users').update({
-            'credits': credits - 1
-        }).eq('email', email).execute()
+    # COMMENTED OUT FOR TESTING - NO CREDIT DEDUCTION
+    # # Deduct credit on successful generation
+    # if email and email_reply and not email_reply.startswith('Error:'):
+    #     supabase.table('users').update({
+    #         'credits': credits - 1
+    #     }).eq('email', email).execute()
     
-    return jsonify({'response': email_reply, 'user': email, 'credits_remaining': credits - 1})
+    return jsonify({'response': email_reply})
 
 
 if __name__ == '__main__':

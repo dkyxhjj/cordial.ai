@@ -153,7 +153,7 @@ async function rewriteEmail(tone = 'professional') {
     }
     
     
-    // Send to Flask API
+    // Send to Flask API (no auth required for testing)
     const response = await fetch(`${API_BASE_URL}/generate-reply`, {
       method: 'POST',
       headers: {

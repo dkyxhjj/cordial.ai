@@ -11,7 +11,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const userInfo = document.getElementById('user-info');
     
     // Check authentication status on load
-    checkAuthStatus();
+    // checkAuthStatus();
+    
+    // Skip auth for testing - show main section directly
+    if (authSection) authSection.style.display = 'none';
+    if (mainSection) mainSection.style.display = 'block';
     
     // Add click handlers to tone buttons
     toneButtons.forEach(button => {
@@ -220,11 +224,11 @@ function executeRewrite(tone) {
             }
             
             // Get user info from storage for API request
-            const userData = await new Promise((resolve) => {
-                chrome.storage.local.get(['user'], (result) => {
-                    resolve(result.user);
-                });
-            });
+            // const userData = await new Promise((resolve) => {
+            //     chrome.storage.local.get(['user'], (result) => {
+            //         resolve(result.user);
+            //     });
+            // });
             
             // Send to Flask API
             const response = await fetch(`${API_BASE_URL}/generate-reply`, {
@@ -235,16 +239,16 @@ function executeRewrite(tone) {
                 credentials: 'include',
                 body: JSON.stringify({
                     message: fullMessage,
-                    tone: tone,
-                    user: userData
+                    tone: tone
+                    // user: userData
                 })
             });
             
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                if (response.status === 401 && errorData.auth_required) {
-                    throw new Error('Please sign in to use the email rewriter');
-                }
+                // if (response.status === 401 && errorData.auth_required) {
+                //     throw new Error('Please sign in to use the email rewriter');
+                // }
                 throw new Error(`Server error: ${response.status}`);
             }
             
