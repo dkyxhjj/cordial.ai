@@ -15,7 +15,7 @@ load_dotenv('.env.local')
 
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4-mini')  # Default to gpt-4-mini if not specified
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'o4-mini')  # Default to gpt-4-mini if not specified
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 api_key = os.getenv('OPENAI_API_KEY') 
 client = OpenAI(api_key=api_key)
@@ -23,7 +23,7 @@ client = OpenAI(api_key=api_key)
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'dev-key-change-in-production')
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+app.config['SESSION_COOKIE_SECURE'] = True  # Set to True in production with HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_TYPE'] = 'filesystem'
