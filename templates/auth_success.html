@@ -62,64 +62,70 @@
                 throw new Error('No user information provided');
             {% endif %}
             
-            // Check if opener window exists
-            if (!window.opener) {
-                throw new Error('No parent window found');
+            // Don't throw error if no parent window - just store the auth data
+            console.log('Auth success page loaded, storing user data...');
+            
+            // Try multiple communication methods
+            let communicated = false;
+            
+            // Method 1: Try Chrome storage (if available)
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                try {
+                    chrome.storage.local.set({
+                        user: userInfo,
+                        authSuccess: true,
+                        timestamp: Date.now()
+                    }, () => {
+                        console.log('Auth data saved to Chrome storage');
+                        communicated = true;
+                        setTimeout(() => window.close(), 1000);
+                    });
+                } catch (e) {
+                    console.log('Chrome storage failed:', e);
+                }
             }
             
-            // Check if opener exists and is not closed
-            if (!window.opener || window.opener.closed) {
-                throw new Error('Parent window is not available or was closed');
+            // Method 2: Try postMessage (only if window exists)
+            if (window.opener && !window.opener.closed) {
+                try {
+                    window.opener.postMessage({
+                        type: 'auth_success',
+                        user: userInfo
+                    }, '*');
+                    console.log('PostMessage sent');
+                    communicated = true;
+                } catch (e) {
+                    console.log('PostMessage failed:', e);
+                }
             }
             
-            // Send message with strict origin validation
-            // Only send to chrome-extension origins for security
-            const allowedOrigins = [
-                'chrome-extension://*',
-                window.location.origin
-            ];
+            // Method 3: Try to call a function on the opener if it exists
+            if (window.opener && typeof window.opener.handleAuthSuccess === 'function') {
+                try {
+                    window.opener.handleAuthSuccess(userInfo);
+                    console.log('Direct function call succeeded');
+                    communicated = true;
+                } catch (e) {
+                    console.log('Direct function call failed:', e);
+                }
+            }
             
-            let targetOrigin = window.location.origin;
-            
-            // Check if opener is a chrome extension
+            // Method 4: Always store in localStorage as fallback
             try {
-                if (window.opener && window.opener.location && window.opener.location.protocol === 'chrome-extension:') {
-                    targetOrigin = window.opener.location.origin;
-                }
-            } catch (crossOriginError) {
-                // Cross-origin access blocked, use '*' for chrome extensions
-                if (window.opener) {
-                    targetOrigin = '*';
-                }
+                localStorage.setItem('cordial_auth_success', JSON.stringify({
+                    user: userInfo,
+                    timestamp: Date.now()
+                }));
+                console.log('Auth data stored in localStorage');
+                communicated = true;
+            } catch (e) {
+                console.log('localStorage failed:', e);
             }
             
-            window.opener.postMessage({
-                type: 'auth_success',
-                user: userInfo
-            }, targetOrigin);
-            
-            // Wait for acknowledgment or timeout
-            let messageAcknowledged = false;
-            
-            // Listen for acknowledgment from parent
-            const messageHandler = (event) => {
-                if (event.data && event.data.type === 'auth_received') {
-                    messageAcknowledged = true;
-                    window.removeEventListener('message', messageHandler);
-                    window.close();
-                }
-            };
-            
-            window.addEventListener('message', messageHandler);
-            
-            // Fallback: close after 3 seconds if no acknowledgment
+            // Close window after delay
             setTimeout(() => {
-                if (!messageAcknowledged) {
-                    console.warn('No acknowledgment received from parent window');
-                    window.removeEventListener('message', messageHandler);
-                    window.close();
-                }
-            }, 3000);
+                window.close();
+            }, communicated ? 1000 : 3000);
             
         } catch (e) {
             console.error('Authentication communication failed:', e);

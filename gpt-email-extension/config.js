@@ -1,6 +1,6 @@
 // Extension configuration
 const CONFIG = {
-    API_BASE_URL: 'https://cordial-ai.onrender.com/',
+    API_BASE_URL: 'https://cordial-ai.onrender.com',
     
     // Gmail selectors for finding email editor
     GMAIL_SELECTORS: [

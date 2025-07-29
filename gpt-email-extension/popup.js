@@ -1,6 +1,6 @@
 // Popup script for Smart Email Rewriter
 // Load configuration
-const API_BASE_URL = window.CONFIG?.API_BASE_URL || 'https://cordial-ai.onrender.com';
+const API_BASE_URL = 'https://cordial-ai.onrender.com';
 
 document.addEventListener('DOMContentLoaded', function() {
     const toneButtons = document.querySelectorAll('.tone-btn');
@@ -248,11 +248,11 @@ async function loadUserCredits() {
                         updateCreditsDisplay(data.credits);
                     } else {
                         console.warn('Failed to fetch credits from server, using cached value');
-                        updateCreditsDisplay(result.user.credits || 10);
+                        updateCreditsDisplay(result.user.credits || 15);
                     }
                 } catch (error) {
                     console.error('Credits fetch error:', error);
-                    updateCreditsDisplay(result.user.credits || 10);
+                    updateCreditsDisplay(result.user.credits || 15);
                 }
             } else {
                 updateCreditsDisplay(0);
@@ -296,41 +296,95 @@ async function handleLogin() {
     try {
         // Open OAuth popup
         const authUrl = `${API_BASE_URL}/auth/login`;
+        console.log('Auth URL:', authUrl);
         const popup = window.open(authUrl, 'oauth', 'width=500,height=600,scrollbars=yes,resizable=yes');
+        console.log('Popup opened:', popup);
         
-        // Listen for auth success message
-        const messageListener = (event) => {
-            if (event.data && event.data.type === 'auth_success' && event.data.user) {
-                // Send acknowledgment back to auth window
-                event.source.postMessage({
-                    type: 'auth_received'
-                }, event.origin);
-                
-                window.removeEventListener('message', messageListener);
-                popup.close();
-                
-                const user = event.data.user;
-                user.authenticated = true;
-                chrome.storage.local.set({user: user}, () => {
-                    if (chrome.runtime.lastError) {
-                        console.error('Storage error:', chrome.runtime.lastError);
-                        showStatus('error', 'Failed to save authentication');
-                        return;
-                    }
-                    showAuthenticatedState(user);
-                });
-            }
+        // Method 1: Direct function call
+        window.handleAuthSuccess = function(userInfo) {
+            console.log('Direct auth success called!', userInfo);
+            processAuthSuccess(userInfo);
         };
         
+        // Method 2: PostMessage listener  
+        const messageListener = (event) => {
+            console.log('Message received:', event.data, 'from origin:', event.origin);
+            if (event.data && event.data.type === 'auth_success' && event.data.user) {
+                console.log('Auth success message received!');
+                processAuthSuccess(event.data.user);
+            }
+        };
         window.addEventListener('message', messageListener);
+        
+        // Method 3: Check Chrome storage for auth success
+        const checkAuthSuccess = setInterval(() => {
+            chrome.storage.local.get(['authSuccess', 'user', 'timestamp'], (result) => {
+                if (result.authSuccess && result.user && result.timestamp) {
+                    // Check if auth is recent (within last 30 seconds)
+                    const now = Date.now();
+                    if (now - result.timestamp < 30000) {
+                        console.log('Auth success found in Chrome storage!');
+                        processAuthSuccess(result.user);
+                        return;
+                    }
+                }
+            });
+            
+            // Method 4: Check localStorage for auth success
+            try {
+                const authData = localStorage.getItem('cordial_auth_success');
+                if (authData) {
+                    const parsed = JSON.parse(authData);
+                    const now = Date.now();
+                    if (parsed.user && parsed.timestamp && (now - parsed.timestamp < 30000)) {
+                        console.log('Auth success found in localStorage!');
+                        localStorage.removeItem('cordial_auth_success');
+                        processAuthSuccess(parsed.user);
+                    }
+                }
+            } catch (e) {
+                console.log('localStorage check failed:', e);
+            }
+        }, 500);
+        
+        // Function to process successful authentication
+        function processAuthSuccess(userInfo) {
+            clearInterval(checkAuthSuccess);
+            window.removeEventListener('message', messageListener);
+            
+            // Clean up auth success flag
+            chrome.storage.local.remove(['authSuccess', 'timestamp']);
+            
+            // Close popup if still open
+            if (popup && !popup.closed) {
+                popup.close();
+            }
+            
+            // Update UI with authenticated state
+            const user = userInfo;
+            user.authenticated = true;
+            chrome.storage.local.set({user: user}, () => {
+                if (chrome.runtime.lastError) {
+                    console.error('Storage error:', chrome.runtime.lastError);
+                    showStatus('error', 'Failed to save authentication');
+                    return;
+                }
+                showAuthenticatedState(user);
+            });
+        }
         
         // Check if popup was closed manually
         const checkClosed = setInterval(() => {
             if (popup.closed) {
                 clearInterval(checkClosed);
-                window.removeEventListener('message', messageListener);
+                clearInterval(checkAuthSuccess);
             }
         }, 1000);
+        
+        // Clean up after 60 seconds
+        setTimeout(() => {
+            clearInterval(checkAuthSuccess);
+        }, 60000);
         
     } catch (error) {
         showStatus('error', 'Login failed. Please try again.');

@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from openai import OpenAI
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
@@ -120,7 +120,9 @@ def generate_email_reply(client, user_message, tone="professional"):
 @app.route('/auth/login')
 def login():
     # Redirect to Supabase Auth with Google provider
-    redirect_uri = "https://cordial-ai.onrender.com/auth/callback"
+    # Dynamically construct redirect URI based on current request
+    # Use production URL for redirect_uri to ensure consistency
+    redirect_uri = 'https://cordial-ai.onrender.com/auth/callback'
     auth_url = f"{SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to={redirect_uri}"
     return redirect(auth_url)
 
@@ -139,11 +141,17 @@ def auth_callback():
         # Set the session with Supabase Auth
         try:
             # Use Supabase client to get user info with the access token
-            supabase.auth.set_session(access_token, refresh_token)
+            print(f"Step 1: Setting session with tokens")
+            session_response = supabase.auth.set_session(access_token, refresh_token)
+            print(f"Step 2: Session set, getting user")
             user = supabase.auth.get_user()
+            print(f"Step 3: Got user response")
             
             if not user or not user.user:
+                print("Step 4: No user data found")
                 return jsonify({'error': 'Failed to get user information'}), 400
+            
+            print("Step 5: User data found, processing...")
             
             user_data = user.user
             email = user_data.email
@@ -156,17 +164,17 @@ def auth_callback():
             if response.data and len(response.data) > 0:
                 # Update last_login
                 supabase.table('users').update({
-                    'last_login': datetime.now(datetime.timezone.utc).isoformat()
+                    'last_login': datetime.now(timezone.utc).isoformat()
                 }).eq('email', email).execute()
             else:
-                # Create new user with 10 credits
+                # Create new user with 15 credits
                 supabase.table('users').insert({
                     'email': email,
                     'name': name,
                     'picture': picture,
-                    'credits': 10,
-                    'created_at': datetime.now(datetime.timezone.utc).isoformat(),
-                    'last_login': datetime.now(datetime.timezone.utc).isoformat()
+                    'credits': 15,
+                    'created_at': datetime.now(timezone.utc).isoformat(),
+                    'last_login': datetime.now(timezone.utc).isoformat()
                 }).execute()
                 
             # Store user in session
@@ -190,7 +198,8 @@ def auth_callback():
             
         except Exception as e:
             print(f"Supabase auth error: {e}")
-            return jsonify({'error': 'Failed to authenticate with Supabase'}), 500
+            print(f"Error type: {type(e)}")
+            return jsonify({'error': f'Failed to authenticate with Supabase: {str(e)}'}), 500
             
     except Exception as e:
         print(f"Auth callback error: {e}")
@@ -277,7 +286,7 @@ def add_to_waitlist():
         # Insert into Supabase via server-side (secure)
         result = supabase.table('waitlist').insert({
             'email': email,
-            'created_at': datetime.now(datetime.timezone.utc).isoformat()
+            'created_at': datetime.now(timezone.utc).isoformat()
         }).execute()
         
         if result.data:
@@ -364,4 +373,4 @@ def generate_reply():
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 4999))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=True)
