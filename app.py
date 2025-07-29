@@ -6,8 +6,6 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from flask_cors import CORS
-from authlib.integrations.flask_client import OAuth
-from authlib.common.security import generate_token
 from flask_session import Session
 from supabase import create_client, Client
 
@@ -41,26 +39,7 @@ CORS(app,
      supports_credentials=True,
      allow_headers=['Content-Type', 'Authorization'],
      methods=['GET', 'POST', 'OPTIONS'])
-client_id = os.getenv('GOOGLE_CLIENT_ID')
-client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
-# OAuth configuration
-oauth = OAuth(app)
-google = oauth.register(
-    name='google',
-    client_id=client_id,
-    client_secret=client_secret,
-    access_token_url='https://oauth2.googleapis.com/token',
-    access_token_params=None,
-    authorize_url='https://accounts.google.com/o/oauth2/v2/auth',
-    authorize_params=None,
-    api_base_url='https://www.googleapis.com/oauth2/v3/',
-    client_kwargs={
-        'scope': 'openid email profile',
-        'token_endpoint_auth_method': 'client_secret_basic',
-    },
-    jwks_uri='https://www.googleapis.com/oauth2/v3/certs',
-    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration'
-)
+# Supabase handles OAuth configuration through its dashboard
 
 def generate_email_reply(client, user_message, tone="professional"):
     """
@@ -137,67 +116,47 @@ def generate_email_reply(client, user_message, tone="professional"):
 
 
 
-# OAuth routes
+# Supabase Auth routes
 @app.route('/auth/login')
 def login():
-    # Generate a secure state token
-    state = generate_token()
-    session['oauth_state'] = state
-    
-    # Define the redirect URI - force HTTPS for production
-    redirect_uri = url_for('auth_callback', _external=True, _scheme='https')
-    
-    # Create the authorization URL with necessary parameters
-    return google.authorize_redirect(
-        redirect_uri=redirect_uri,
-        state=state,
-        access_type='offline',
-        prompt='select_account'
-    )
+    # Redirect to Supabase Auth with Google provider
+    redirect_uri = "https://cordial-ai.onrender.com/auth/callback"
+    auth_url = f"{SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to={redirect_uri}"
+    return redirect(auth_url)
 
 @app.route('/auth/callback')
 def auth_callback():
     try:
-        # Verify state parameter to prevent CSRF
-        state = request.args.get('state')
-        if not state or state != session.get('oauth_state'):
-            return jsonify({'error': 'Invalid state parameter'}), 400
+        # Get access token and refresh token from URL fragments (handled by frontend)
+        # For server-side callback, we'll get the tokens from the query params
+        access_token = request.args.get('access_token')
+        refresh_token = request.args.get('refresh_token')
         
-        # Get the authorization code
-        code = request.args.get('code')
-        if not code:
-            return jsonify({'error': 'No authorization code provided'}), 400
-            
-        # Exchange the authorization code for tokens
-        token = google.authorize_access_token()
-        if not token or 'access_token' not in token:
-            return jsonify({'error': 'Failed to get access token'}), 400
+        if not access_token:
+            # If no tokens in query params, render a page that will handle the URL fragments
+            return render_template('auth_callback.html')
         
+        # Set the session with Supabase Auth
         try:
-            # Fetch user info from Google API
-            resp = requests.get(
-                'https://www.googleapis.com/oauth2/v3/userinfo',
-                headers={'Authorization': f'Bearer {token["access_token"]}'},
-                timeout=10
-            )
-            resp.raise_for_status()
-            user_info = resp.json()
+            # Use Supabase client to get user info with the access token
+            supabase.auth.set_session(access_token, refresh_token)
+            user = supabase.auth.get_user()
             
-            if not user_info or 'email' not in user_info:
+            if not user or not user.user:
                 return jsonify({'error': 'Failed to get user information'}), 400
             
-            # Save user to Supabase
-            email = user_info.get('email')
-            name = user_info.get('name')
-            picture = user_info.get('picture')
-
-            # Check if user exists in Supabase
+            user_data = user.user
+            email = user_data.email
+            name = user_data.user_metadata.get('full_name', '')
+            picture = user_data.user_metadata.get('avatar_url', '')
+            
+            # Check if user exists in custom users table
             response = supabase.table('users').select('*').eq('email', email).execute()
 
             if response.data and len(response.data) > 0:
                 # Update last_login
                 supabase.table('users').update({
-                    'last_login': datetime.utcnow().isoformat()
+                    'last_login': datetime.now(datetime.timezone.utc).isoformat()
                 }).eq('email', email).execute()
             else:
                 # Create new user with 10 credits
@@ -206,52 +165,72 @@ def auth_callback():
                     'name': name,
                     'picture': picture,
                     'credits': 10,
-                    'created_at': datetime.utcnow().isoformat(),
-                    'last_login': datetime.utcnow().isoformat()
+                    'created_at': datetime.now(datetime.timezone.utc).isoformat(),
+                    'last_login': datetime.now(datetime.timezone.utc).isoformat()
                 }).execute()
                 
             # Store user in session
             session['user'] = {
-                'email': user_info['email'],
-                'name': user_info.get('name', ''),
-                'picture': user_info.get('picture', ''),
-                'authenticated': True
+                'email': email,
+                'name': name,
+                'picture': picture,
+                'authenticated': True,
+                'access_token': access_token,
+                'refresh_token': refresh_token
             }
             
             # For Chrome extension, return a success page that can communicate back
-            # Ensure user_info is JSON serializable
             safe_user_info = {
-                'email': user_info.get('email', ''),
-                'name': user_info.get('name', ''),
-                'picture': user_info.get('picture', ''),
+                'email': email,
+                'name': name,
+                'picture': picture,
                 'authenticated': True
             }
             return render_template('auth_success.html', user_info=safe_user_info)
             
-        except requests.exceptions.RequestException as e:
-            print(f"OAuth request error: {e}")  # Log server-side
-            return jsonify({'error': 'Failed to fetch user information'}), 500
+        except Exception as e:
+            print(f"Supabase auth error: {e}")
+            return jsonify({'error': 'Failed to authenticate with Supabase'}), 500
             
     except Exception as e:
-        print(f"OAuth error: {e}")  # Log server-side  
+        print(f"Auth callback error: {e}")
         return jsonify({'error': 'Authentication failed'}), 400
 
 @app.route('/auth/logout')
 def logout():
-    session.pop('user', None)
-    return jsonify({'message': 'Logged out successfully'})
+    try:
+        # Sign out from Supabase Auth
+        supabase.auth.sign_out()
+        session.pop('user', None)
+        return jsonify({'message': 'Logged out successfully'})
+    except Exception as e:
+        print(f"Logout error: {e}")
+        session.pop('user', None)  # Clear session even if Supabase logout fails
+        return jsonify({'message': 'Logged out successfully'})
 
 @app.route('/auth/user')
 def get_user():
     user = session.get('user')
     if user and user.get('authenticated'):
-        # Get credits from Supabase
-        email = user.get('email')
-        if email:
-            response = supabase.table('users').select('credits').eq('email', email).execute()
-            if response.data and len(response.data) > 0:
-                user['credits'] = response.data[0].get('credits', 0)
-        return jsonify(user)
+        try:
+            # Refresh the Supabase session if we have tokens
+            access_token = user.get('access_token')
+            refresh_token = user.get('refresh_token')
+            
+            if access_token and refresh_token:
+                supabase.auth.set_session(access_token, refresh_token)
+                
+            # Get credits from Supabase
+            email = user.get('email')
+            if email:
+                response = supabase.table('users').select('credits').eq('email', email).execute()
+                if response.data and len(response.data) > 0:
+                    user['credits'] = response.data[0].get('credits', 0)
+            return jsonify(user)
+        except Exception as e:
+            print(f"Get user error: {e}")
+            # Return user info even if token refresh fails
+            return jsonify(user)
     return jsonify({'authenticated': False}), 401
 
 @app.route('/get-credits', methods=['POST'])
@@ -298,7 +277,7 @@ def add_to_waitlist():
         # Insert into Supabase via server-side (secure)
         result = supabase.table('waitlist').insert({
             'email': email,
-            'created_at': datetime.utcnow().isoformat()
+            'created_at': datetime.now(datetime.timezone.utc).isoformat()
         }).execute()
         
         if result.data:
@@ -384,5 +363,5 @@ def generate_reply():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 4999))
     app.run(host="0.0.0.0", port=port, debug=False)

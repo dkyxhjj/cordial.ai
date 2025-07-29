@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authenticating...</title>
+</head>
+<body>
+    <div style="text-align: center; padding: 50px;">
+        <h2>Authenticating...</h2>
+        <p>Please wait while we complete your authentication.</p>
+    </div>
+
+    <script>
+        // Extract tokens from URL fragments
+        const urlParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = urlParams.get('access_token');
+        const refreshToken = urlParams.get('refresh_token');
+        const error = urlParams.get('error');
+
+        if (error) {
+            // Handle authentication error
+            console.error('Authentication error:', error);
+            document.body.innerHTML = `
+                <div style="text-align: center; padding: 50px;">
+                    <h2>Authentication Failed</h2>
+                    <p>There was an error during authentication. Please try again.</p>
+                    <button onclick="window.close()">Close</button>
+                </div>
+            `;
+        } else if (accessToken) {
+            // Redirect to callback with tokens as query parameters
+            const callbackUrl = new URL(window.location.href);
+            callbackUrl.search = `?access_token=${accessToken}&refresh_token=${refreshToken || ''}`;
+            callbackUrl.hash = '';
+            window.location.href = callbackUrl.toString();
+        } else {
+            // No tokens found, show error
+            document.body.innerHTML = `
+                <div style="text-align: center; padding: 50px;">
+                    <h2>Authentication Error</h2>
+                    <p>No authentication tokens received. Please try again.</p>
+                    <button onclick="window.close()">Close</button>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
