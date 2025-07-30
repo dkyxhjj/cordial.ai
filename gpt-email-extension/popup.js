@@ -18,13 +18,83 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Add click handler for tips button
     const tipsButton = document.getElementById('tips');
     if (tipsButton) {
         tipsButton.addEventListener('click', function() {
             window.open('https://buy.stripe.com/28E6oIgkv4l11Wd4Jo5gc02', '_blank');
         });
     }
+
+    const claimButton = document.getElementById('claim-daily-credits');
+    if (claimButton) {
+        claimButton.addEventListener('click', async function() {
+            try {
+                // Get current user data
+                const result = await new Promise(resolve => {
+                    chrome.storage.local.get(['user'], resolve);
+                });
+                
+                if (!result.user || !result.user.email) {
+                    showStatus('error', 'Please log in first');
+                    return;
+                }
+                
+                const user = result.user;
+                
+                // Check if already claimed today
+                const now = new Date();
+                const today = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+                const lastClaim = user.last_daily_claim ? new Date(user.last_daily_claim) : null;
+                
+                if (lastClaim && lastClaim >= today) {
+                    showStatus('error', 'Already claimed today! Try again tomorrow.');
+                    return;
+                }
+                
+                showStatus('loading', 'Adding credits...');
+                
+                // Call API to add credits
+                const response = await fetch(`${API_BASE_URL}/add-credits`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ user: user })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    showStatus('success', `Added 5 credits!`);
+                    
+                    // Update DOM
+                    updateCreditsDisplay(data.new_total);
+                    
+                    // Update cached user data
+                    const updatedUser = { 
+                        ...user, 
+                        credits: data.new_total,
+                        last_daily_claim: now.toISOString()
+                    };
+                    chrome.storage.local.set({ user: updatedUser });
+                    
+                    // Disable button until tomorrow
+                    claimButton.disabled = true;
+                    claimButton.textContent = 'Claimed Today';
+                    claimButton.style.background = '#9ca3af';
+                    claimButton.style.color = '#6b7280';
+                    claimButton.style.cursor = 'not-allowed';
+                } else {
+                    showStatus('error', data.error || 'Failed to add credits');
+                }
+            } catch (error) {
+                showStatus('error', 'Failed to add credits');
+            }
+        });
+    }
+
+    
     
     // Add auth button handlers
     if (loginBtn) {
@@ -184,127 +254,8 @@ function showAuthenticatedState(user) {
         creditsActions.style.display = 'block';
     }
     
-    // Setup add credits button
-    setupAddCreditsButton(user);
-    
-    // Setup credit refresh monitoring for Stripe purchases
-    setupStripeMonitoring();
-    
     // Load fresh credits from server
     loadUserCredits();
-}
-
-function setupAddCreditsButton(user) {
-    const addButton = document.getElementById('claim-daily-credits');
-    if (!addButton) return;
-    
-    // Check if user has already claimed today
-    checkDailyClaimAvailability(user, addButton);
-}
-
-function checkDailyClaimAvailability(user, button) {
-    const now = new Date();
-    const todayStart = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0);
-    const lastClaim = user.last_daily_claim ? new Date(user.last_daily_claim) : null;
-    
-    if (lastClaim && lastClaim >= todayStart) {
-        // Already claimed today
-        button.disabled = true;
-        button.textContent = 'Claimed Today';
-        button.style.background = '#9ca3af';
-        button.style.borderColor = '#9ca3af';
-        button.style.color = '#6b7280';
-        button.style.cursor = 'not-allowed';
-    } else {
-        // Can claim today
-        button.disabled = false;
-        button.textContent = 'Claim Daily Credits';
-        button.style.background = 'white';
-        button.style.borderColor = '#d1d5db';
-        button.style.color = '#374151';
-        button.style.cursor = 'pointer';
-        
-        // Remove existing listeners and add new one
-        button.replaceWith(button.cloneNode(true));
-        const newButton = document.getElementById('claim-daily-credits');
-        newButton.addEventListener('click', () => handleAddCredits(user));
-    }
-}
-
-async function handleAddCredits(user) {
-    try {
-        showStatus('loading', 'Adding credits...');
-        
-        const response = await fetch(`${API_BASE_URL}/add-credits`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({ user: user })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok && data.success) {
-            showStatus('success', `Added 5 credits!`);
-            updateCreditsDisplay(data.new_total);
-            
-            // Update cached user data with claim timestamp
-            const updatedUser = { 
-                ...user, 
-                credits: data.new_total,
-                last_daily_claim: new Date().toISOString()
-            };
-            chrome.storage.local.set({ user: updatedUser });
-            
-            // Update button state to show it's been claimed
-            const button = document.getElementById('claim-daily-credits');
-            if (button) {
-                checkDailyClaimAvailability(updatedUser, button);
-            }
-        } else {
-            if (data.already_claimed) {
-                showStatus('error', 'Already claimed today. Try again tomorrow!');
-            } else {
-                showStatus('error', data.error || 'Failed to add credits');
-            }
-        }
-    } catch (error) {
-        showStatus('error', 'Failed to add credits');
-    }
-}
-
-function setupStripeMonitoring() {
-    // Listen for messages from Stripe checkout success/cancel pages
-    window.addEventListener('message', (event) => {
-        if (event.data && event.data.type === 'stripe_payment_success') {
-            // Refresh credits with retry logic after successful payment
-            let retryCount = 0;
-            const maxRetries = 5;
-            
-            const refreshWithRetry = () => {
-                setTimeout(() => {
-                    loadUserCredits();
-                    retryCount++;
-                    
-                    if (retryCount < maxRetries) {
-                        refreshWithRetry();
-                    } else {
-                        showStatus('success', 'Payment processed! Your credits have been updated.');
-                    }
-                }, retryCount * 2000); // 2s, 4s, 6s, 8s, 10s delays
-            };
-            
-            refreshWithRetry();
-        }
-    });
-    
-    // Also periodically refresh credits while popup is open
-    // This helps catch credit updates from successful payments
-    setInterval(() => {
-        loadUserCredits();
-    }, 30000); // Refresh every 30 seconds
 }
 
 async function loadUserCredits() {

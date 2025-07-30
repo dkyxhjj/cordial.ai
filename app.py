@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify, render_template, session, redirect, u
 from flask_cors import CORS
 from flask_session import Session
 from supabase import create_client, Client
-import stripe
+
 import hmac
 import hashlib
 
@@ -17,12 +17,10 @@ load_dotenv('.env.local')
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 SUPABASE_SECRET = os.getenv('SUPABASE_SECRET')
-STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
-STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
+
 OPENAI_MODEL = "gpt-4.1-mini"
 
-# Initialize Stripe
-stripe.api_key = STRIPE_SECRET_KEY
+
 
 # Initialize Supabase with service role key for backend operations (bypasses RLS)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SECRET)

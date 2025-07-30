@@ -226,44 +226,7 @@
             opacity: 0.7;
         }
         
-        /* Stripe Buy Button Styling */
-        .stripe-buy-wrapper {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        stripe-buy-button {
-            width: 100% !important;
-        }
-        
-        /* Override Stripe button styles to match our design */
-        stripe-buy-button::part(button) {
-            padding: 8px 10px !important;
-            border: 1px solid #d1d5db !important;
-            border-radius: 6px !important;
-            background: white !important;
-            color: #374151 !important;
-            cursor: pointer !important;
-            font-size: 12px !important;
-            font-weight: 400 !important;
-            transition: all 0.15s ease !important;
-            text-align: center !important;
-            width: 100% !important;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
-        }
-        
-        stripe-buy-button::part(button):hover {
-            background: #f9fafb !important;
-            border-color: #9ca3af !important;
-            transform: translateY(-1px) !important;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-        }
-        
-        stripe-buy-button::part(button):active {
-            transform: translateY(0) !important;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
-        }
+
     </style>
 </head>
 <body>
@@ -317,7 +280,6 @@
     
     <div id="status" class="status"></div>
     
-    <script async src="https://js.stripe.com/v3/buy-button.js"></script>
     <script src="config.js"></script>
     <script src="popup.js"></script>
 </body>
