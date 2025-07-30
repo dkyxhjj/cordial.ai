@@ -46,3 +46,4 @@ env/
 .Trashes
 ehthumbs.db
 Thumbs.db
+flask_session
