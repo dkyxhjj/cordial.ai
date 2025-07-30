@@ -104,8 +104,6 @@ function isNewEmail() {
     (subjectInput.value.toLowerCase().startsWith('re:') || 
      subjectInput.value.toLowerCase().startsWith('fwd:') ||
      subjectInput.value.toLowerCase().startsWith('fw:'));
-  const conversationView = document.querySelector('.if, .nH[role="main"] .adn');
-  const inConversationView = !!conversationView;
   return !hasPreviousMessages && !isReplySubject;
 }
 
@@ -224,9 +222,9 @@ async function rewriteEmail(tone = 'professional') {
 
     let fullMessage;
     if (threadContext) {
-      fullMessage = `Email Thread Context:\n${threadContext}\n\n--- My Draft Reply ---\n${originalText}\n\nPlease rewrite my draft reply to be more professional and well-structured, taking into account the context of the email thread above.`;
+      fullMessage = `Email Thread Context:\n${threadContext}\n\n--- My Draft Reply ---\n${originalText}\n\nPlease rewrite my draft reply to be well-structured, taking into account the context of the email thread above, and make sure to value user's input`;
     } else {
-      fullMessage = `My draft email:\n${originalText}\n\nPlease rewrite this email to be more professional and well-structured. This is a new email I'm sending out (not a reply), so make it appropriate for reaching out or initiating communication.`;
+      fullMessage = `My draft email:\n${originalText}\n\nPlease rewrite this email to be well-structured and appropriate for reaching out or initiating communication.`;
     }
     
     const response = await fetch(`${API_BASE_URL}/generate-reply`, {

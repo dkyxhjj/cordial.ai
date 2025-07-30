@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const statusDiv = document.getElementById('status');
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
+    const tipsButton = document.getElementById('tips');
+    const claimButton = document.getElementById('claim-daily-credits');
     
     // Check authentication status on load
     checkAuthStatus();
@@ -18,14 +20,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    const tipsButton = document.getElementById('tips');
+    
     if (tipsButton) {
         tipsButton.addEventListener('click', function() {
             window.open('https://buy.stripe.com/28E6oIgkv4l11Wd4Jo5gc02', '_blank');
         });
     }
 
-    const claimButton = document.getElementById('claim-daily-credits');
+    
     if (claimButton) {
         claimButton.addEventListener('click', async function() {
             try {
@@ -40,16 +42,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 const user = result.user;
-                
-                // Check if already claimed today
-                const now = new Date();
-                const today = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-                const lastClaim = user.last_daily_claim ? new Date(user.last_daily_claim) : null;
-                
-                if (lastClaim && lastClaim >= today) {
-                    showStatus('error', 'Already claimed today! Try again tomorrow.');
-                    return;
-                }
                 
                 showStatus('loading', 'Adding credits...');
                 
@@ -78,13 +70,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         last_daily_claim: now.toISOString()
                     };
                     chrome.storage.local.set({ user: updatedUser });
-                    
-                    // Disable button until tomorrow
-                    claimButton.disabled = true;
-                    claimButton.textContent = 'Claimed Today';
-                    claimButton.style.background = '#9ca3af';
-                    claimButton.style.color = '#6b7280';
-                    claimButton.style.cursor = 'not-allowed';
                 } else {
                     showStatus('error', data.error || 'Failed to add credits');
                 }
@@ -94,8 +79,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    
-    
     // Add auth button handlers
     if (loginBtn) {
         loginBtn.addEventListener('click', handleLogin);

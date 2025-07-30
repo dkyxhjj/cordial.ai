@@ -9,17 +9,12 @@ from flask_cors import CORS
 from flask_session import Session
 from supabase import create_client, Client
 
-import hmac
-import hashlib
-
 load_dotenv('.env.local')
 
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 SUPABASE_SECRET = os.getenv('SUPABASE_SECRET')
-
 OPENAI_MODEL = "gpt-4.1-mini"
-
 
 
 # Initialize Supabase with service role key for backend operations (bypasses RLS)
@@ -309,6 +304,7 @@ def get_user():
             return jsonify(user)
     return jsonify({'authenticated': False}), 401
 
+#getter for credits
 @app.route('/get-credits', methods=['POST'])
 def get_credits():
     data = request.json
@@ -328,64 +324,7 @@ def get_credits():
         credits = response.data[0].get('credits', 0)
         return jsonify({'credits': credits})
     else:
-        # Create the user since they're authenticated but missing from database
-        try:
-            name = user.get('name', '')
-            picture = user.get('picture', '')
-            
-            supabase.table('users').insert({
-                'email': email,
-                'name': name,
-                'picture': picture,
-                'credits': 15,
-                'created_at': datetime.now(timezone.utc).isoformat(),
-                'last_login': datetime.now(timezone.utc).isoformat()
-            }).execute()
-            
-            return jsonify({'credits': 15})
-            
-        except Exception as e:
-            return jsonify({'error': 'Failed to create user account'}), 500
-
-@app.route('/claim-daily-credits', methods=['POST'])
-def claim_daily_credits():
-    data = request.json
-    user = data.get('user')
-    
-    if not user or not user.get('email'):
-        return jsonify({'error': 'User data required'}), 400
-    
-    email = user.get('email')
-    
-    try:
-        response = supabase.table('users').select('*').eq('email', email).execute()
-        
-        if not response.data or len(response.data) == 0:
-            return jsonify({'error': 'User not found'}), 404
-        
-        user_data = response.data[0]
-        current_credits = user_data.get('credits', 0)
-        
-        # Add 5 credits (no daily restriction)
-        new_credits = current_credits + 5
-        
-        # Update user in database
-        supabase.table('users').update({
-            'credits': new_credits
-        }).eq('email', email).execute()
-        return jsonify({
-            'success': True,
-            'credits_added': 5,
-            'new_total': new_credits,
-            'message': 'Credits added successfully!'
-        })
-        
-    except Exception as e:
-        return jsonify({'error': f'Failed to claim daily credits: {str(e)}'}), 500
-
-
-
-
+        return jsonify({'error': 'User not found'}), 404
 
 
 @app.route('/', methods=['GET'])
