@@ -219,6 +219,19 @@ function showAuthenticatedState(user) {
         }
     }
     
+    // Show cached credits immediately, then update with server data
+    const cachedCredits = user.credits || 15;
+    updateCreditsDisplay(cachedCredits);
+    
+    // Show credits actions
+    const creditsActions = document.getElementById('credits-actions');
+    if (creditsActions) {
+        creditsActions.style.display = 'block';
+    }
+    
+    // Add event listeners for credit buttons
+    setupCreditButtons(user);
+    
     loadUserCredits();
 }
 
@@ -246,6 +259,10 @@ async function loadUserCredits() {
                     if (response.ok) {
                         const data = await response.json();
                         updateCreditsDisplay(data.credits);
+                        
+                        // Update cached user data with fresh credits
+                        const updatedUser = { ...result.user, credits: data.credits };
+                        chrome.storage.local.set({ user: updatedUser });
                     } else {
                         console.warn('Failed to fetch credits from server, using cached value');
                         updateCreditsDisplay(result.user.credits || 15);
@@ -333,13 +350,18 @@ async function handleLogin() {
             // Method 4: Check localStorage for auth success
             try {
                 const authData = localStorage.getItem('cordial_auth_success');
-                if (authData) {
-                    const parsed = JSON.parse(authData);
+                const authTimestamp = localStorage.getItem('cordial_auth_timestamp');
+                
+                if (authData && authTimestamp) {
                     const now = Date.now();
-                    if (parsed.user && parsed.timestamp && (now - parsed.timestamp < 30000)) {
+                    const timestamp = parseInt(authTimestamp);
+                    
+                    if (now - timestamp < 30000) { // Within 30 seconds
                         console.log('Auth success found in localStorage!');
+                        const userInfo = JSON.parse(decodeURIComponent(authData));
                         localStorage.removeItem('cordial_auth_success');
-                        processAuthSuccess(parsed.user);
+                        localStorage.removeItem('cordial_auth_timestamp');
+                        processAuthSuccess(userInfo);
                     }
                 }
             } catch (e) {
@@ -389,6 +411,90 @@ async function handleLogin() {
     } catch (error) {
         showStatus('error', 'Login failed. Please try again.');
     }
+}
+
+function setupCreditButtons(user) {
+    const claimButton = document.getElementById('claim-daily-credits');
+    const buyButton = document.getElementById('buy-credits');
+    const supportButton = document.getElementById('support-creator');
+    
+    if (claimButton) {
+        claimButton.addEventListener('click', () => handleClaimDailyCredits(user));
+        checkDailyCreditAvailability(user);
+    }
+    
+    if (buyButton) {
+        buyButton.addEventListener('click', () => {
+            window.open('https://buy.stripe.com/00wcN68S3cRx7gxgs65gc01', '_blank');
+        });
+    }
+
+}
+
+async function handleClaimDailyCredits(user) {
+    try {
+        showStatus('loading', 'Claiming daily credits...');
+        
+        const response = await fetch(`${API_BASE_URL}/claim-daily-credits`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ user: user })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            showStatus('success', `Claimed ${data.credits_added} credits!`);
+            updateCreditsDisplay(data.new_total);
+            
+            // Update cached user data
+            const updatedUser = { ...user, credits: data.new_total };
+            chrome.storage.local.set({ user: updatedUser });
+            
+            // Disable button until next day
+            checkDailyCreditAvailability(user);
+        } else {
+            showStatus('error', data.error || 'Failed to claim credits');
+        }
+    } catch (error) {
+        console.error('Claim credits error:', error);
+        showStatus('error', 'Failed to claim daily credits');
+    }
+}
+
+function checkDailyCreditAvailability(user) {
+    const claimButton = document.getElementById('claim-daily-credits');
+    if (!claimButton) return;
+    
+    // Check if user has already claimed today (UTC)
+    const now = new Date();
+    const today = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const lastClaim = user.last_daily_claim ? new Date(user.last_daily_claim) : null;
+    
+    if (lastClaim) {
+        const lastClaimDay = new Date(lastClaim.getUTCFullYear(), lastClaim.getUTCMonth(), lastClaim.getUTCDate());
+        
+        if (today.getTime() === lastClaimDay.getTime()) {
+            // Already claimed today
+            claimButton.disabled = true;
+            claimButton.textContent = 'Claimed Today';
+            claimButton.style.background = '#9ca3af';
+            claimButton.style.borderColor = '#9ca3af';
+            claimButton.style.color = '#6b7280';
+            claimButton.style.cursor = 'not-allowed';
+            return;
+        }
+    }
+    
+    // Can claim today
+    claimButton.disabled = false;
+    claimButton.textContent = 'Claim Daily Credits';
+    claimButton.style.background = 'white';
+    claimButton.style.borderColor = '#d1d5db';
+    claimButton.style.color = '#374151';
+    claimButton.style.cursor = 'pointer';
 }
 
 async function handleLogout() {

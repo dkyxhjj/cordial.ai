@@ -51,6 +51,37 @@
             gap: 6px;
         }
         
+        .credits-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        
+        .credits-btn {
+            padding: 8px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: white;
+            color: #374151;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 400;
+            transition: all 0.15s ease;
+            text-align: center;
+        }
+        
+        .credits-btn:hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .credits-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        
         .tone-btn {
             padding: 8px 10px;
             border: 1px solid #d1d5db;
@@ -171,6 +202,8 @@
             <span id="credits-count">0</span> credits remaining
         </div>
         
+        
+        
         <div class="tone-section">
             <div class="section-title">Select Tone:</div>
             <div class="tone-grid">
@@ -178,6 +211,14 @@
                 <button class="tone-btn" data-tone="friendly">Friendly</button>
                 <button class="tone-btn" data-tone="formal">Formal</button>
                 <button class="tone-btn" data-tone="concise">Concise</button>
+            </div>
+        </div>
+
+        <div class="credits-section" style="margin-bottom: 16px; display: none;" id="credits-actions">
+            <div class="section-title">Get Credits:</div>
+            <div class="credits-grid">
+                <button id="claim-daily-credits" class="credits-btn">Claim Daily Credits</button>
+                <button id="buy-credits" class="credits-btn">Buy Credits</button>
             </div>
         </div>
     </div>

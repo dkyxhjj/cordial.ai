@@ -135,8 +135,40 @@ def auth_callback():
         refresh_token = request.args.get('refresh_token')
         
         if not access_token:
-            # If no tokens in query params, render a page that will handle the URL fragments
-            return render_template('auth_callback.html')
+            # If no tokens in query params, handle URL fragments directly
+            return """
+            <!DOCTYPE html>
+            <html>
+            <head><title>Processing Authentication...</title></head>
+            <body>
+                <script>
+                    // Extract tokens from URL fragments
+                    const urlParams = new URLSearchParams(window.location.hash.substring(1));
+                    const accessToken = urlParams.get('access_token');
+                    const refreshToken = urlParams.get('refresh_token');
+                    const error = urlParams.get('error');
+
+                    if (error) {
+                        console.error('Authentication error:', error);
+                        alert('Authentication failed. Please try again.');
+                        window.close();
+                    } else if (accessToken) {
+                        // Redirect to callback with tokens as query parameters
+                        const callbackUrl = new URL(window.location.href);
+                        callbackUrl.search = `?access_token=${accessToken}&refresh_token=${refreshToken || ''}`;
+                        callbackUrl.hash = '';
+                        window.location.href = callbackUrl.toString();
+                    } else {
+                        alert('Authentication failed. No tokens received.');
+                        window.close();
+                    }
+                </script>
+                <div style="text-align: center; padding: 50px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+                    <p>Processing authentication...</p>
+                </div>
+            </body>
+            </html>
+            """
         
         # Set the session with Supabase Auth
         try:
@@ -187,14 +219,50 @@ def auth_callback():
                 'refresh_token': refresh_token
             }
             
-            # For Chrome extension, return a success page that can communicate back
+            # Store user data and redirect to a special extension URL
             safe_user_info = {
                 'email': email,
                 'name': name,
                 'picture': picture,
                 'authenticated': True
             }
-            return render_template('auth_success.html', user_info=safe_user_info)
+            
+            # Create a simple HTML page that stores data and closes
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head><title>Authentication Complete</title></head>
+            <body>
+                <script>
+                    try {{
+                        // Store auth data in localStorage
+                        localStorage.setItem('cordial_auth_success', {json.dumps(json.dumps(safe_user_info))});
+                        localStorage.setItem('cordial_auth_timestamp', '{int(datetime.now().timestamp() * 1000)}');
+                        
+                        // Try to communicate with extension if possible
+                        if (window.opener && !window.opener.closed) {{
+                            window.opener.postMessage({{
+                                type: 'auth_success', 
+                                user: {json.dumps(safe_user_info)}
+                            }}, '*');
+                        }}
+                        
+                        // Close window after short delay
+                        setTimeout(() => window.close(), 500);
+                    }} catch(e) {{
+                        console.error('Auth completion error:', e);
+                        window.close();
+                    }}
+                </script>
+                <div style="text-align: center; padding: 50px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+                    <h2>✅ Authentication Successful</h2>
+                    <p>This window will close automatically...</p>
+                </div>
+            </body>
+            </html>
+            """
+            
+            return html_content
             
         except Exception as e:
             print(f"Supabase auth error: {e}")
@@ -258,6 +326,57 @@ def get_credits():
         return jsonify({'credits': credits})
     else:
         return jsonify({'error': 'User not found'}), 404
+
+@app.route('/claim-daily-credits', methods=['POST'])
+def claim_daily_credits():
+    data = request.json
+    user = data.get('user')
+    
+    if not user or not user.get('email'):
+        return jsonify({'error': 'User data required'}), 400
+    
+    email = user.get('email')
+    
+    try:
+        # Get current user data
+        response = supabase.table('users').select('*').eq('email', email).execute()
+        
+        if not response.data or len(response.data) == 0:
+            return jsonify({'error': 'User not found'}), 404
+        
+        user_data = response.data[0]
+        current_credits = user_data.get('credits', 0)
+        last_daily_claim = user_data.get('last_daily_claim')
+        
+        # Check if user has already claimed today (UTC)
+        now = datetime.now(timezone.utc)
+        today = now.replace(hour=12, minute=0, second=0, microsecond=0)  # Reset at 12 UTC
+        
+        if last_daily_claim:
+            last_claim_date = datetime.fromisoformat(last_daily_claim.replace('Z', '+00:00'))
+            # Check if last claim was today (after 12 UTC)
+            if last_claim_date >= today:
+                return jsonify({'error': 'Daily credits already claimed today. Try again tomorrow!'}), 400
+        
+        # Add 3 daily credits
+        new_credits = current_credits + 3
+        
+        # Update user in database
+        supabase.table('users').update({
+            'credits': new_credits,
+            'last_daily_claim': now.isoformat()
+        }).eq('email', email).execute()
+        
+        return jsonify({
+            'success': True,
+            'credits_added': 3,
+            'new_total': new_credits,
+            'message': 'Daily credits claimed successfully!'
+        })
+        
+    except Exception as e:
+        print(f"Daily credits error: {e}")
+        return jsonify({'error': 'Failed to claim daily credits'}), 500
 
 
 @app.route('/', methods=['GET'])

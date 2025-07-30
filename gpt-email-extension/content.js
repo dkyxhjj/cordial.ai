@@ -148,7 +148,31 @@ function waitForEditor(timeout = 10000) {
 
 async function rewriteEmail(tone = 'professional') {
   try {
-    const editor = await waitForEditor();
+    // First check if we're in a compose window at all
+    const isInCompose = document.querySelector('.T-I.T-I-KE') ||  // Send button
+                        document.querySelector('[role="button"][data-tooltip*="Send"]') ||
+                        document.querySelector('.nH .if') ||  // Compose window
+                        document.querySelector('.aO7') ||     // Compose dialog
+                        document.querySelector('[contenteditable="true"]'); // Any editor
+    
+    if (!isInCompose) {
+      showNotification('Please open a compose window first!', 'warning');
+      return {
+        success: false,
+        error: 'Please open a compose window first!'
+      };
+    }
+    
+    // Check for editor immediately - don't wait if none exists
+    let editor = getEmailEditor();
+    if (!editor) {
+      showNotification('Navigate to compose window or reply thread!', 'warning');
+      return {
+        success: false,
+        error: 'Navigate to compose window or reply thread!'
+      };
+    }
+    
     const originalText = editor.innerText || editor.textContent;
     
     if (!originalText || originalText.trim().length === 0) {
@@ -312,62 +336,8 @@ function showNotification(message, type = 'info') {
       notification.style.animation = 'slideOutScale 0.3s ease-in';
       setTimeout(() => notification.remove(), 300);
     }
-  }, 4000);
+  }, 2000);
 }
-
-function createFloatingButton() {
-  const existingButton = document.querySelector('.email-rewriter-fab');
-  if (existingButton) {
-    existingButton.remove();
-  }
-  
-  const fab = document.createElement('div');
-  fab.className = 'email-rewriter-fab';
-  fab.innerHTML = '✨';
-  fab.title = 'Rewrite Email (Ctrl+Shift+R)';
-  fab.style.cssText = `
-    position: fixed;
-    bottom: 30px;
-    right: 30px;
-    width: 56px;
-    height: 56px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 24px;
-    color: white;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    z-index: 9999;
-    transition: all 0.3s ease;
-    user-select: none;
-  `;
-  
-  fab.addEventListener('mouseenter', () => {
-    fab.style.transform = 'scale(1.1)';
-    fab.style.boxShadow = '0 6px 25px rgba(0,0,0,0.4)';
-  });
-  
-  fab.addEventListener('mouseleave', () => {
-    fab.style.transform = 'scale(1)';
-    fab.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)';
-  });
-  
-  fab.addEventListener('click', () => {
-    rewriteEmail('professional');
-  });
-  
-  document.body.appendChild(fab);
-}
-
-document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && e.shiftKey && e.key === 'R') {
-    e.preventDefault();
-    rewriteEmail('professional');
-  }
-});
 
 function initialize() {
   if (window.location.hostname === 'mail.google.com') {
