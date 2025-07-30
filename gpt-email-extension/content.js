@@ -1,6 +1,6 @@
 
 // Load configuration or use defaults
-const API_BASE_URL = window.CONFIG?.API_BASE_URL || 'https://cordial-ai.onrender.com';
+const API_BASE_URL = 'https://cordial-ai.onrender.com';
 const GMAIL_SELECTORS = window.CONFIG?.GMAIL_SELECTORS || [
   '[contenteditable="true"]',
   'div[role="textbox"]',
@@ -151,14 +151,12 @@ function getUserData() {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
       chrome.storage.local.get(['user'], (result) => {
         if (chrome.runtime.lastError) {
-          console.error('Chrome storage error:', chrome.runtime.lastError);
           resolve(null);
           return;
         }
         resolve(result.user || null);
       });
     } else {
-      console.error('Chrome storage API not available');
       resolve(null);
     }
   });
@@ -236,6 +234,7 @@ async function rewriteEmail(tone = 'professional') {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify({
         message: fullMessage,
         tone: tone,

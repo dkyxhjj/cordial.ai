@@ -1,5 +1,4 @@
-// Popup script for Smart Email Rewriter
-// Load configuration
+// Simple Popup script for Smart Email Rewriter
 const API_BASE_URL = 'https://cordial-ai.onrender.com';
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -19,6 +18,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
+    // Add click handler for tips button
+    const tipsButton = document.getElementById('tips');
+    if (tipsButton) {
+        tipsButton.addEventListener('click', function() {
+            window.open('https://buy.stripe.com/28E6oIgkv4l11Wd4Jo5gc02', '_blank');
+        });
+    }
+    
     // Add auth button handlers
     if (loginBtn) {
         loginBtn.addEventListener('click', handleLogin);
@@ -29,116 +36,75 @@ document.addEventListener('DOMContentLoaded', function() {
     
     async function rewriteEmailWithTone(tone) {
         try {
-            // Show loading status
             showStatus('loading', 'Rewriting your email...');
             
-            // Set a timeout to prevent infinite loading
-            const operationTimeout = setTimeout(() => {
-                showStatus('error', 'Operation timed out. Please try again.');
-            }, 30000); // 30 second timeout
-            
-            // Get the active tab
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             
-            if (!tab) {
-                clearTimeout(operationTimeout);
-                showStatus('error', 'Could not access current tab. Please try again.');
-                return;
-            }
-            
-            // Check if we're on Gmail
-            if (!tab.url || !tab.url.includes('mail.google.com')) {
-                clearTimeout(operationTimeout);
+            if (!tab || !tab.url || !tab.url.includes('mail.google.com')) {
                 showStatus('error', 'Please navigate to Gmail first!');
                 return;
             }
             
             try {
-                // Check if content script is already loaded, if not inject it
                 const [result] = await chrome.scripting.executeScript({
                     target: { tabId: tab.id },
-                    function: () => {
-                        return typeof rewriteEmail === 'function';
-                    }
+                    function: () => typeof rewriteEmail === 'function'
                 });
                 
                 if (!result.result) {
-                    // Content script not loaded, inject config and content script
                     await chrome.scripting.executeScript({
                         target: { tabId: tab.id },
                         files: ['config.js', 'content.js']
                     });
-                    
-                    // Wait a moment for the script to load
                     await new Promise(resolve => setTimeout(resolve, 100));
                 }
             } catch (scriptError) {
-                clearTimeout(operationTimeout);
                 showStatus('error', 'Failed to inject content script. Please refresh Gmail and try again.');
                 return;
             }
             
             try {
-                // Execute the rewrite function and capture result
                 const [result] = await chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     function: async (tone) => {
-                        try {
-                            if (typeof rewriteEmail === 'function') {
-                                return await rewriteEmail(tone);
-                            } else {
-                                return {
-                                    success: false,
-                                    error: 'Content script not properly loaded'
-                                };
-                            }
-                        } catch (error) {
-                            return {
-                                success: false,
-                                error: `Script execution failed: ${error.message}`
-                            };
+                        if (typeof rewriteEmail === 'function') {
+                            return await rewriteEmail(tone);
+                        } else {
+                            return { success: false, error: 'Content script not properly loaded' };
                         }
                     },
                     args: [tone]
                 });
                 
-                // Handle the result from content script
                 const executionResult = result.result;
                 
-                // Check if we got a valid result
-                if (!executionResult) {
-                    throw new Error('No result returned from content script');
-                }
-                
-                // Clear timeout since operation completed
-                clearTimeout(operationTimeout);
-                
                 if (executionResult && executionResult.success) {
-                    // Show success message
                     showStatus('success', executionResult.message || 'Email rewritten successfully!');
                     
-                    // Close popup after showing success
-                    setTimeout(() => {
-                        window.close();
-                    }, 1500);
+                    // Update credits display if available
+                    if (typeof executionResult.credits_remaining === 'number') {
+                        updateCreditsDisplay(executionResult.credits_remaining);
+                        
+                        // Update cached user data
+                        chrome.storage.local.get(['user'], (result) => {
+                            if (result.user) {
+                                const updatedUser = { ...result.user, credits: executionResult.credits_remaining };
+                                chrome.storage.local.set({ user: updatedUser });
+                            }
+                        });
+                    }
+                    
+                    setTimeout(() => window.close(), 1500);
                 } else {
-                    // Show error message from content script
                     const errorMsg = executionResult?.error || 'Failed to rewrite email';
                     showStatus('error', errorMsg);
                 }
                 
             } catch (executeError) {
-                clearTimeout(operationTimeout);
-                console.error('Execute error:', executeError);
                 showStatus('error', 'Failed to execute rewrite. Please refresh Gmail and try again.');
             }
             
         } catch (error) {
-            // Make sure to clear timeout in case of any uncaught errors
-            if (typeof operationTimeout !== 'undefined') {
-                clearTimeout(operationTimeout);
-            }
-            console.error('Rewrite error:', error);
             showStatus('error', `Error: ${error.message || 'Unknown error occurred'}`);
         }
     }
@@ -154,16 +120,14 @@ document.addEventListener('DOMContentLoaded', function() {
         
         statusDiv.style.display = 'block';
         
-        // Clear any existing status timeouts
         if (window.statusTimeout) {
             clearTimeout(window.statusTimeout);
         }
         
-        // Hide status after delay (except for loading)
         if (type !== 'loading') {
             window.statusTimeout = setTimeout(() => {
                 statusDiv.style.display = 'none';
-            }, type === 'success' ? 1500 : 4000); // Success shows shorter, errors longer
+            }, type === 'success' ? 1500 : 4000);
         }
     }
 });
@@ -173,7 +137,6 @@ async function checkAuthStatus() {
     try {
         chrome.storage.local.get(['user'], (result) => {
             if (chrome.runtime.lastError) {
-                console.error('Storage error:', chrome.runtime.lastError);
                 showUnauthenticatedState();
                 return;
             }
@@ -185,7 +148,6 @@ async function checkAuthStatus() {
             }
         });
     } catch (error) {
-        console.error('Auth check error:', error);
         showUnauthenticatedState();
     }
 }
@@ -195,12 +157,9 @@ function showAuthenticatedState(user) {
     const mainSection = document.getElementById('main-section');
     const userInfo = document.getElementById('user-info');
     
-    if (authSection) {
-        authSection.style.display = 'none';
-    }
-    if (mainSection) {
-        mainSection.style.display = 'block';
-    }
+    if (authSection) authSection.style.display = 'none';
+    if (mainSection) mainSection.style.display = 'block';
+    
     if (userInfo) {
         userInfo.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
@@ -216,97 +175,166 @@ function showAuthenticatedState(user) {
         }
     }
     
-    // Show cached credits immediately, then update with server data
+    // Show credits
     const cachedCredits = user.credits || 15;
     updateCreditsDisplay(cachedCredits);
     
-    // Show credits actions
     const creditsActions = document.getElementById('credits-actions');
     if (creditsActions) {
         creditsActions.style.display = 'block';
     }
     
-    // Add event listeners for credit buttons
-    setupCreditButtons(user);
+    // Setup add credits button
+    setupAddCreditsButton(user);
     
+    // Setup credit refresh monitoring for Stripe purchases
+    setupStripeMonitoring();
+    
+    // Load fresh credits from server
     loadUserCredits();
 }
 
+function setupAddCreditsButton(user) {
+    const addButton = document.getElementById('claim-daily-credits');
+    if (!addButton) return;
+    
+    // Check if user has already claimed today
+    checkDailyClaimAvailability(user, addButton);
+}
+
+function checkDailyClaimAvailability(user, button) {
+    const now = new Date();
+    const todayStart = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0);
+    const lastClaim = user.last_daily_claim ? new Date(user.last_daily_claim) : null;
+    
+    if (lastClaim && lastClaim >= todayStart) {
+        // Already claimed today
+        button.disabled = true;
+        button.textContent = 'Claimed Today';
+        button.style.background = '#9ca3af';
+        button.style.borderColor = '#9ca3af';
+        button.style.color = '#6b7280';
+        button.style.cursor = 'not-allowed';
+    } else {
+        // Can claim today
+        button.disabled = false;
+        button.textContent = 'Claim Daily Credits';
+        button.style.background = 'white';
+        button.style.borderColor = '#d1d5db';
+        button.style.color = '#374151';
+        button.style.cursor = 'pointer';
+        
+        // Remove existing listeners and add new one
+        button.replaceWith(button.cloneNode(true));
+        const newButton = document.getElementById('claim-daily-credits');
+        newButton.addEventListener('click', () => handleAddCredits(user));
+    }
+}
+
+async function handleAddCredits(user) {
+    try {
+        showStatus('loading', 'Adding credits...');
+        
+        const response = await fetch(`${API_BASE_URL}/add-credits`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ user: user })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            showStatus('success', `Added 5 credits!`);
+            updateCreditsDisplay(data.new_total);
+            
+            // Update cached user data with claim timestamp
+            const updatedUser = { 
+                ...user, 
+                credits: data.new_total,
+                last_daily_claim: new Date().toISOString()
+            };
+            chrome.storage.local.set({ user: updatedUser });
+            
+            // Update button state to show it's been claimed
+            const button = document.getElementById('claim-daily-credits');
+            if (button) {
+                checkDailyClaimAvailability(updatedUser, button);
+            }
+        } else {
+            if (data.already_claimed) {
+                showStatus('error', 'Already claimed today. Try again tomorrow!');
+            } else {
+                showStatus('error', data.error || 'Failed to add credits');
+            }
+        }
+    } catch (error) {
+        showStatus('error', 'Failed to add credits');
+    }
+}
+
+function setupStripeMonitoring() {
+    // Listen for messages from Stripe checkout success/cancel pages
+    window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'stripe_payment_success') {
+            // Refresh credits with retry logic after successful payment
+            let retryCount = 0;
+            const maxRetries = 5;
+            
+            const refreshWithRetry = () => {
+                setTimeout(() => {
+                    loadUserCredits();
+                    retryCount++;
+                    
+                    if (retryCount < maxRetries) {
+                        refreshWithRetry();
+                    } else {
+                        showStatus('success', 'Payment processed! Your credits have been updated.');
+                    }
+                }, retryCount * 2000); // 2s, 4s, 6s, 8s, 10s delays
+            };
+            
+            refreshWithRetry();
+        }
+    });
+    
+    // Also periodically refresh credits while popup is open
+    // This helps catch credit updates from successful payments
+    setInterval(() => {
+        loadUserCredits();
+    }, 30000); // Refresh every 30 seconds
+}
 
 async function loadUserCredits() {
     try {
         chrome.storage.local.get(['user'], async (result) => {
-            if (chrome.runtime.lastError) {
-                console.error('Storage error loading credits:', chrome.runtime.lastError);
-                updateCreditsDisplay(0);
-                return;
-            }
-            
             if (result.user && result.user.email) {
                 try {
-                    // Get fresh user data from server including last_daily_claim
-                    const response = await fetch(`${API_BASE_URL}/auth/user`, {
-                        method: 'GET',
-                        credentials: 'include'
+                    const creditsResponse = await fetch(`${API_BASE_URL}/get-credits`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        credentials: 'include',
+                        body: JSON.stringify({ user: result.user })
                     });
                     
-                    if (response.ok) {
-                        const serverUser = await response.json();
-                        if (serverUser.authenticated) {
-                            // Update local storage with fresh server data
-                            const updatedUser = { 
-                                ...result.user, 
-                                credits: serverUser.credits || result.user.credits || 15,
-                                last_daily_claim: serverUser.last_daily_claim || result.user.last_daily_claim
-                            };
-                            chrome.storage.local.set({ user: updatedUser });
-                            updateCreditsDisplay(updatedUser.credits);
-                            
-                            // Update credit button availability with fresh data
-                            checkDailyCreditAvailability(updatedUser);
-                        } else {
-                            // Fallback to get-credits endpoint
-                            const creditsResponse = await fetch(`${API_BASE_URL}/get-credits`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                    user: result.user
-                                })
-                            });
-                            
-                            if (creditsResponse.ok) {
-                                const data = await creditsResponse.json();
-                                updateCreditsDisplay(data.credits);
-                                
-                                // Update cached user data with fresh credits
-                                const updatedUser = { ...result.user, credits: data.credits };
-                                chrome.storage.local.set({ user: updatedUser });
-                                checkDailyCreditAvailability(updatedUser);
-                            } else {
-                                console.warn('Failed to fetch credits from server, using cached value');
-                                updateCreditsDisplay(result.user.credits || 15);
-                                checkDailyCreditAvailability(result.user);
-                            }
-                        }
-                    } else {
-                        console.warn('Failed to fetch user data from server, using cached value');
-                        updateCreditsDisplay(result.user.credits || 15);
-                        checkDailyCreditAvailability(result.user);
+                    if (creditsResponse.ok) {
+                        const data = await creditsResponse.json();
+                        updateCreditsDisplay(data.credits);
+                        
+                        const updatedUser = { ...result.user, credits: data.credits };
+                        chrome.storage.local.set({ user: updatedUser });
                     }
                 } catch (error) {
-                    console.error('User data fetch error:', error);
-                    updateCreditsDisplay(result.user.credits || 15);
-                    checkDailyCreditAvailability(result.user);
+                    console.error('Credits fetch error:', error);
                 }
-            } else {
-                updateCreditsDisplay(0);
             }
         });
     } catch (error) {
         console.error('Load credits error:', error);
-        updateCreditsDisplay(0);
     }
 }
 
@@ -330,53 +358,36 @@ function showUnauthenticatedState() {
     const authSection = document.getElementById('auth-section');
     const mainSection = document.getElementById('main-section');
     
-    if (authSection) {
-        authSection.style.display = 'block';
-    }
-    if (mainSection) {
-        mainSection.style.display = 'none';
-    }
+    if (authSection) authSection.style.display = 'block';
+    if (mainSection) mainSection.style.display = 'none';
 }
 
 async function handleLogin() {
     try {
-        // Open OAuth popup
         const authUrl = `${API_BASE_URL}/auth/login`;
-        console.log('Auth URL:', authUrl);
         const popup = window.open(authUrl, 'oauth', 'width=500,height=600,scrollbars=yes,resizable=yes');
-        console.log('Popup opened:', popup);
         
-        // Method 1: Direct function call
-        window.handleAuthSuccess = function(userInfo) {
-            console.log('Direct auth success called!', userInfo);
-            processAuthSuccess(userInfo);
-        };
+        // Multiple methods to detect authentication success
         
-        // Method 2: PostMessage listener  
+        // Method 1: PostMessage listener  
         const messageListener = (event) => {
-            console.log('Message received:', event.data, 'from origin:', event.origin);
             if (event.data && event.data.type === 'auth_success' && event.data.user) {
-                console.log('Auth success message received!');
                 processAuthSuccess(event.data.user);
             }
         };
         window.addEventListener('message', messageListener);
         
-        // Method 3: Check Chrome storage for auth success
-        const checkAuthSuccess = setInterval(() => {
-            chrome.storage.local.get(['authSuccess', 'user', 'timestamp'], (result) => {
-                if (result.authSuccess && result.user && result.timestamp) {
-                    // Check if auth is recent (within last 30 seconds)
-                    const now = Date.now();
-                    if (now - result.timestamp < 30000) {
-                        console.log('Auth success found in Chrome storage!');
-                        processAuthSuccess(result.user);
-                        return;
-                    }
+        // Method 2: Check Chrome storage periodically
+        const checkInterval = setInterval(() => {
+            chrome.storage.local.get(['user'], (result) => {
+                if (result.user && result.user.authenticated) {
+                    processAuthSuccess(result.user);
                 }
             });
-            
-            // Method 4: Check localStorage for auth success
+        }, 1000);
+        
+        // Method 3: Check localStorage for auth success
+        const checkLocalStorage = setInterval(() => {
             try {
                 const authData = localStorage.getItem('cordial_auth_success');
                 const authTimestamp = localStorage.getItem('cordial_auth_timestamp');
@@ -386,37 +397,30 @@ async function handleLogin() {
                     const timestamp = parseInt(authTimestamp);
                     
                     if (now - timestamp < 30000) { // Within 30 seconds
-                        console.log('Auth success found in localStorage!');
-                        const userInfo = JSON.parse(decodeURIComponent(authData));
+                        const userInfo = JSON.parse(JSON.parse(authData));
                         localStorage.removeItem('cordial_auth_success');
                         localStorage.removeItem('cordial_auth_timestamp');
                         processAuthSuccess(userInfo);
                     }
                 }
             } catch (e) {
-                console.log('localStorage check failed:', e);
+                // Ignore localStorage errors
             }
         }, 500);
         
-        // Function to process successful authentication
         function processAuthSuccess(userInfo) {
-            clearInterval(checkAuthSuccess);
+            clearInterval(checkInterval);
+            clearInterval(checkLocalStorage);
             window.removeEventListener('message', messageListener);
             
-            // Clean up auth success flag
-            chrome.storage.local.remove(['authSuccess', 'timestamp']);
-            
-            // Close popup if still open
             if (popup && !popup.closed) {
                 popup.close();
             }
             
-            // Update UI with authenticated state
-            const user = userInfo;
-            user.authenticated = true;
-            chrome.storage.local.set({user: user}, () => {
+            // Store user data
+            const user = { ...userInfo, authenticated: true };
+            chrome.storage.local.set({ user: user }, () => {
                 if (chrome.runtime.lastError) {
-                    console.error('Storage error:', chrome.runtime.lastError);
                     showStatus('error', 'Failed to save authentication');
                     return;
                 }
@@ -428,13 +432,18 @@ async function handleLogin() {
         const checkClosed = setInterval(() => {
             if (popup.closed) {
                 clearInterval(checkClosed);
-                clearInterval(checkAuthSuccess);
+                clearInterval(checkInterval);
+                clearInterval(checkLocalStorage);
+                window.removeEventListener('message', messageListener);
             }
         }, 1000);
         
         // Clean up after 60 seconds
         setTimeout(() => {
-            clearInterval(checkAuthSuccess);
+            clearInterval(checkInterval);
+            clearInterval(checkLocalStorage);
+            clearInterval(checkClosed);
+            window.removeEventListener('message', messageListener);
         }, 60000);
         
     } catch (error) {
@@ -442,159 +451,20 @@ async function handleLogin() {
     }
 }
 
-function setupCreditButtons(user) {
-    console.log('Setting up credit buttons for user:', user);
-    const claimButton = document.getElementById('claim-daily-credits');
-    const buyButton = document.getElementById('buy-credits');
-    
-    if (claimButton) {
-        console.log('Daily credits button found, setting up click handler');
-        // Remove any existing event listeners to prevent duplicates
-        claimButton.replaceWith(claimButton.cloneNode(true));
-        const newClaimButton = document.getElementById('claim-daily-credits');
-        newClaimButton.addEventListener('click', () => handleClaimDailyCredits(user));
-        checkDailyCreditAvailability(user);
-    } else {
-        console.error('Daily credits button not found in DOM');
-    }
-    
-    if (buyButton) {
-        console.log('Buy credits button found, setting up click handler');
-        buyButton.addEventListener('click', () => handleBuyCredits(user));
-    } else {
-        console.error('Buy credits button not found in DOM');
-    }
-}
-
-async function handleBuyCredits(user) {
-    try {
-        showStatus('loading', 'Creating checkout session...');
-        
-        const response = await fetch(`${API_BASE_URL}/create-checkout-session`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                email: user.email,
-                credits: 20 // Default 10 credits for $10
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok && data.checkout_url) {
-            showStatus('success', 'Redirecting to checkout...');
-            window.open(data.checkout_url, '_blank');
-        } else {
-            showStatus('error', data.error || 'Failed to create checkout session');
-        }
-    } catch (error) {
-        console.error('Buy credits error:', error);
-        showStatus('error', 'Failed to start checkout process');
-    }
-}
-
-async function handleClaimDailyCredits(user) {
-    try {
-        if (!user || !user.email) {
-            showStatus('error', 'User authentication required');
-            return;
-        }
-        
-        console.log('Claiming daily credits for user:', user.email);
-        showStatus('loading', 'Claiming daily credits...');
-        
-        const response = await fetch(`${API_BASE_URL}/claim-daily-credits`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ user: user })
-        });
-        
-        console.log('Daily credits response status:', response.status);
-        const data = await response.json();
-        console.log('Daily credits response data:', data);
-        
-        if (response.ok && data.success) {
-            showStatus('success', `Claimed ${data.credits_added} credits!`);
-            updateCreditsDisplay(data.new_total);
-            
-            // Update cached user data with last claim info
-            const updatedUser = { 
-                ...user, 
-                credits: data.new_total,
-                last_daily_claim: new Date().toISOString()
-            };
-            chrome.storage.local.set({ user: updatedUser });
-            
-            // Disable button until next day
-            checkDailyCreditAvailability(updatedUser);
-        } else {
-            console.error('Daily credits claim failed:', data);
-            showStatus('error', data.error || 'Failed to claim credits');
-        }
-    } catch (error) {
-        console.error('Daily credits error:', error);
-        showStatus('error', 'Failed to claim daily credits');
-    }
-}
-
-function checkDailyCreditAvailability(user) {
-    const claimButton = document.getElementById('claim-daily-credits');
-    if (!claimButton) return;
-    
-    // Check if user has already claimed today (UTC) - using same logic as server
-    const now = new Date();
-    const todayReset = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0, 0); // 12 UTC reset time
-    const lastClaim = user.last_daily_claim ? new Date(user.last_daily_claim) : null;
-    
-    if (lastClaim) {
-        // Check if last claim was after today's reset time (12 UTC)
-        if (lastClaim >= todayReset) {
-            // Already claimed today
-            claimButton.disabled = true;
-            claimButton.textContent = 'Claimed Today';
-            claimButton.style.background = '#9ca3af';
-            claimButton.style.borderColor = '#9ca3af';
-            claimButton.style.color = '#6b7280';
-            claimButton.style.cursor = 'not-allowed';
-            return;
-        }
-    }
-    
-    // Can claim today
-    claimButton.disabled = false;
-    claimButton.textContent = 'Claim Daily Credits (3)';
-    claimButton.style.background = 'white';
-    claimButton.style.borderColor = '#d1d5db';
-    claimButton.style.color = '#374151';
-    claimButton.style.cursor = 'pointer';
-}
-
 async function handleLogout() {
     try {
         chrome.storage.local.remove(['user'], () => {
-            if (chrome.runtime.lastError) {
-                console.error('Storage error during logout:', chrome.runtime.lastError);
-                showStatus('error', 'Logout failed - storage error');
-                return;
-            }
             showUnauthenticatedState();
             showStatus('success', 'Logged out successfully');
         });
         
-        // Attempt to logout from server (don't block on this)
         fetch(`${API_BASE_URL}/auth/logout`, {
             method: 'GET',
             credentials: 'include'
-        }).catch((error) => {
-            console.warn('Server logout failed:', error);
-        });
+        }).catch(() => {});
         
     } catch (error) {
-        console.error('Logout error:', error);
-        showStatus('error', 'Logout failed');
+        showUnauthenticatedState();
     }
 }
+

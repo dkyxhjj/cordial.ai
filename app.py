@@ -16,6 +16,7 @@ load_dotenv('.env.local')
 
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+SUPABASE_SECRET = os.getenv('SUPABASE_SECRET')
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
 OPENAI_MODEL = "gpt-4.1-mini"
@@ -23,7 +24,8 @@ OPENAI_MODEL = "gpt-4.1-mini"
 # Initialize Stripe
 stripe.api_key = STRIPE_SECRET_KEY
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Initialize Supabase with service role key for backend operations (bypasses RLS)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_SECRET)
 api_key = os.getenv('OPENAI_API_KEY') 
 client = OpenAI(api_key=api_key)
 
@@ -41,9 +43,7 @@ CORS(app,
      origins=[
          "chrome-extension://*",  # Allow Chrome extensions
          "https://mail.google.com",  # Gmail domain
-         "https://cordial-ai.onrender.com",  # Your production domain
-         "http://localhost:5000",  # Local development
-         "http://127.0.0.1:5000"   # Local development
+         "https://cordial-ai.onrender.com"  # Production domain
      ],
      supports_credentials=True,
      allow_headers=['Content-Type', 'Authorization'],
@@ -63,11 +63,12 @@ def generate_email_reply(client, user_message, tone="professional"):
         A formatted email reply
     """
     tone_instructions = {
-        "professional": "Use a balanced professional tone with appropriate formality while being personable.",
-        "friendly": "Use a warm, conversational tone while maintaining professionalism.",
-        "formal": "Use a highly formal tone appropriate for official business communications.",
-        "concise": "Be brief and to the point while addressing all key points.",
+        "professional": "Use a polished and respectful tone that maintains clarity and confidence. Avoid slang, be grammatically precise, and ensure the message flows in a logical, business-appropriate manner. Suitable for formal work communication, external emails, or executive audiences.",
+        "concise": "Keep the message brief and direct while covering all essential points. Eliminate filler words, stay focused on the goal of the email, and present key information in bullet points or short paragraphs if needed. Ideal for quick updates, internal messages, or task requests.",
+        "friendly": "Adopt a warm, approachable tone that maintains professionalism. Use polite expressions, light conversational phrases, and express appreciation where appropriate. Suitable for team communication, networking, or soft follow-ups.",
+        "persuasive": "Write in a confident, motivating tone that encourages action. Emphasize benefits, address potential concerns, and include a clear call to action. Use positive language and build momentum toward a decision or response. Ideal for pitches, requests, or collaboration proposals."
     }
+
     
     selected_tone = tone_instructions.get(tone, tone_instructions["professional"])
     
@@ -84,6 +85,8 @@ def generate_email_reply(client, user_message, tone="professional"):
     prompt = f"""
     You are an email assistant that creates professional email replies. 
     Generate a complete, well-structured email reply to the following message using a {tone} tone.
+
+    {selected_tone}
     
     Guidelines:
     - Create a full email with greeting, body paragraphs, and closing/signature
@@ -119,8 +122,6 @@ def generate_email_reply(client, user_message, tone="professional"):
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        # Log detailed error server-side, return generic message to user
-        print(f"OpenAI API error: {e}")
         return "Error: Unable to generate email response. Please try again."
 
 
@@ -130,7 +131,7 @@ def generate_email_reply(client, user_message, tone="professional"):
 def login():
     # Redirect to Supabase Auth with Google provider
     # Dynamically construct redirect URI based on current request
-    # Use production URL for redirect_uri to ensure consistency
+    # Use production URL for OAuth redirect
     redirect_uri = 'https://cordial-ai.onrender.com/auth/callback'
     auth_url = f"{SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to={redirect_uri}"
     return redirect(auth_url)
@@ -182,17 +183,11 @@ def auth_callback():
         # Set the session with Supabase Auth
         try:
             # Use Supabase client to get user info with the access token
-            print(f"Step 1: Setting session with tokens")
-            session_response = supabase.auth.set_session(access_token, refresh_token)
-            print(f"Step 2: Session set, getting user")
+            supabase.auth.set_session(access_token, refresh_token)
             user = supabase.auth.get_user()
-            print(f"Step 3: Got user response")
             
             if not user or not user.user:
-                print("Step 4: No user data found")
                 return jsonify({'error': 'Failed to get user information'}), 400
-            
-            print("Step 5: User data found, processing...")
             
             user_data = user.user
             email = user_data.email
@@ -274,12 +269,9 @@ def auth_callback():
             return html_content
             
         except Exception as e:
-            print(f"Supabase auth error: {e}")
-            print(f"Error type: {type(e)}")
             return jsonify({'error': f'Failed to authenticate with Supabase: {str(e)}'}), 500
             
     except Exception as e:
-        print(f"Auth callback error: {e}")
         return jsonify({'error': 'Authentication failed'}), 400
 
 @app.route('/auth/logout')
@@ -290,7 +282,6 @@ def logout():
         session.pop('user', None)
         return jsonify({'message': 'Logged out successfully'})
     except Exception as e:
-        print(f"Logout error: {e}")
         session.pop('user', None)  # Clear session even if Supabase logout fails
         return jsonify({'message': 'Logged out successfully'})
 
@@ -316,7 +307,6 @@ def get_user():
                     user['last_daily_claim'] = user_data.get('last_daily_claim')
             return jsonify(user)
         except Exception as e:
-            print(f"Get user error: {e}")
             # Return user info even if token refresh fails
             return jsonify(user)
     return jsonify({'authenticated': False}), 401
@@ -330,207 +320,74 @@ def get_credits():
         return jsonify({'error': 'User data required'}), 400
     
     email = user.get('email')
-    response = supabase.table('users').select('credits').eq('email', email).execute()
+    
+    try:
+        response = supabase.table('users').select('credits').eq('email', email).execute()
+    except Exception as e:
+        return jsonify({'error': 'Database query failed'}), 500
     
     if response.data and len(response.data) > 0:
         credits = response.data[0].get('credits', 0)
         return jsonify({'credits': credits})
     else:
-        return jsonify({'error': 'User not found'}), 404
+        # Create the user since they're authenticated but missing from database
+        try:
+            name = user.get('name', '')
+            picture = user.get('picture', '')
+            
+            supabase.table('users').insert({
+                'email': email,
+                'name': name,
+                'picture': picture,
+                'credits': 15,
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'last_login': datetime.now(timezone.utc).isoformat()
+            }).execute()
+            
+            return jsonify({'credits': 15})
+            
+        except Exception as e:
+            return jsonify({'error': 'Failed to create user account'}), 500
 
 @app.route('/claim-daily-credits', methods=['POST'])
 def claim_daily_credits():
-    print("=== CLAIM DAILY CREDITS DEBUG ===")
     data = request.json
-    print(f"Request data: {data}")
-    
     user = data.get('user')
-    print(f"User data: {user}")
     
     if not user or not user.get('email'):
-        print("ERROR: User data required")
         return jsonify({'error': 'User data required'}), 400
     
     email = user.get('email')
-    print(f"User email: {email}")
     
     try:
-        # Get current user data
-        print("Fetching user from database...")
         response = supabase.table('users').select('*').eq('email', email).execute()
-        print(f"Database response: {response.data}")
         
         if not response.data or len(response.data) == 0:
-            print("ERROR: User not found in database")
             return jsonify({'error': 'User not found'}), 404
         
         user_data = response.data[0]
         current_credits = user_data.get('credits', 0)
-        last_daily_claim = user_data.get('last_daily_claim')
         
-        print(f"Current credits: {current_credits}")
-        print(f"Last daily claim: {last_daily_claim}")
-        
-        # Check if user has already claimed today (UTC)
-        now = datetime.now(timezone.utc)
-        today = now.replace(hour=12, minute=0, second=0, microsecond=0)  # Reset at 12 UTC
-        
-        print(f"Current time: {now}")
-        print(f"Today reset time: {today}")
-        
-        if last_daily_claim:
-            last_claim_date = datetime.fromisoformat(last_daily_claim.replace('Z', '+00:00'))
-            print(f"Last claim date: {last_claim_date}")
-            # Check if last claim was today (after 12 UTC)
-            if last_claim_date >= today:
-                print("ERROR: Already claimed today")
-                return jsonify({'error': 'Daily credits already claimed today. Try again tomorrow!'}), 400
-        
-        # Add 3 daily credits
-        new_credits = current_credits + 3
-        print(f"New credits total: {new_credits}")
+        # Add 5 credits (no daily restriction)
+        new_credits = current_credits + 5
         
         # Update user in database
-        print("Updating user in database...")
-        update_response = supabase.table('users').update({
-            'credits': new_credits,
-            'last_daily_claim': now.isoformat()
+        supabase.table('users').update({
+            'credits': new_credits
         }).eq('email', email).execute()
-        
-        print(f"Update response: {update_response.data}")
-        
-        print("SUCCESS: Daily credits claimed!")
         return jsonify({
             'success': True,
-            'credits_added': 3,
+            'credits_added': 5,
             'new_total': new_credits,
-            'message': 'Daily credits claimed successfully!'
+            'message': 'Credits added successfully!'
         })
         
     except Exception as e:
-        print(f"EXCEPTION in daily credits: {e}")
-        print(f"Exception type: {type(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': f'Failed to claim daily credits: {str(e)}'}), 500
 
-@app.route('/stripe-webhook', methods=['POST'])
-def stripe_webhook():
-    payload = request.get_data(as_text=True)
-    sig_header = request.headers.get('Stripe-Signature')
-    
-    try:
-        # Verify webhook signature
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
-        )
-    except ValueError as e:
-        print(f"Invalid payload: {e}")
-        return jsonify({'error': 'Invalid payload'}), 400
-    except stripe.error.SignatureVerificationError as e:
-        print(f"Invalid signature: {e}")
-        return jsonify({'error': 'Invalid signature'}), 400
-    
-    # Handle the event
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-        
-        # Get customer email and metadata
-        customer_email = session.get('customer_details', {}).get('email')
-        metadata = session.get('metadata', {})
-        credits_to_add = int(metadata.get('credits', 0))
-        
-        if customer_email and credits_to_add > 0:
-            try:
-                # Find user and add credits
-                response = supabase.table('users').select('*').eq('email', customer_email).execute()
-                
-                if response.data and len(response.data) > 0:
-                    user_data = response.data[0]
-                    current_credits = user_data.get('credits', 0)
-                    new_credits = current_credits + credits_to_add
-                    
-                    # Update user credits
-                    supabase.table('users').update({
-                        'credits': new_credits
-                    }).eq('email', customer_email).execute()
-                    
-                    print(f"Added {credits_to_add} credits to {customer_email}. New total: {new_credits}")
-                else:
-                    print(f"User not found: {customer_email}")
-                    
-            except Exception as e:
-                print(f"Error processing payment for {customer_email}: {e}")
-    
-    return jsonify({'status': 'success'})
 
-@app.route('/create-checkout-session', methods=['POST'])
-def create_checkout_session():
-    try:
-        data = request.json
-        email = data.get('email')
-        credits = data.get('credits', 10)
-        
-        if not email:
-            return jsonify({'error': 'Email required'}), 400
-        
-        # Create Stripe checkout session
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{
-                'price_data': {
-                    'currency': 'usd',
-                    'product_data': {
-                        'name': f'{credits} Cordial AI Credits',
-                        'description': f'Credits for Cordial AI email writing assistant',
-                    },
-                    'unit_amount': credits * 100,  # $1 per credit in cents
-                },
-                'quantity': 1,
-            }],
-            metadata={
-                'credits': str(credits),
-                'email': email
-            },
-            customer_email=email,
-            mode='payment',
-            success_url='https://cordial-ai.onrender.com/payment-success?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url='https://cordial-ai.onrender.com/payment-cancelled',
-        )
-        
-        return jsonify({'checkout_url': checkout_session.url})
-        
-    except Exception as e:
-        print(f"Checkout session error: {e}")
-        return jsonify({'error': 'Failed to create checkout session'}), 500
 
-@app.route('/payment-success')
-def payment_success():
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head><title>Payment Successful</title></head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: center; padding: 50px;">
-        <h1>🎉 Payment Successful!</h1>
-        <p>Your credits have been added to your account.</p>
-        <p>You can close this window and return to the extension.</p>
-    </body>
-    </html>
-    """
 
-@app.route('/payment-cancelled')  
-def payment_cancelled():
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head><title>Payment Cancelled</title></head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: center; padding: 50px;">
-        <h1>Payment Cancelled</h1>
-        <p>Your payment was cancelled. No charges were made.</p>
-        <p>You can close this window and try again if needed.</p>
-    </body>
-    </html>
-    """
 
 
 @app.route('/', methods=['GET'])
@@ -622,6 +479,10 @@ def generate_reply():
             credits = response.data[0].get('credits', 0)
             if credits <= 0:
                 return jsonify({'error': 'Insufficient credits. Please contact support.'}), 402
+        else:
+            return jsonify({'error': 'User not properly registered. Please log out and log in again.'}), 500
+    else:
+        return jsonify({'error': 'Invalid user data. Please log in again.'}), 401
     
     email_reply = generate_email_reply(client, user_message, tone)
     
@@ -630,12 +491,68 @@ def generate_reply():
         supabase.table('users').update({
             'credits': credits - 1
         }).eq('email', email).execute()
+        credits = credits - 1  # Update local credits variable
     
     # Return remaining credits in response
     return jsonify({
         'response': email_reply,
-        'credits_remaining': credits - 1
+        'credits_remaining': credits
     })
+
+@app.route('/add-credits', methods=['POST'])
+def add_credits():
+    """Add 5 credits to a user (once per day limit)"""
+    data = request.json
+    user = data.get('user')
+    
+    if not user or not user.get('email'):
+        return jsonify({'error': 'User data required'}), 400
+    
+    email = user.get('email')
+    
+    try:
+        # Get current user data
+        response = supabase.table('users').select('*').eq('email', email).execute()
+        
+        if not response.data or len(response.data) == 0:
+            return jsonify({'error': 'User not found'}), 404
+        
+        user_data = response.data[0]
+        current_credits = user_data.get('credits', 0)
+        last_daily_claim = user_data.get('last_daily_claim')
+        
+        # Check if user has already claimed today (UTC)
+        now = datetime.now(timezone.utc)
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)  # Start of day UTC
+        
+        if last_daily_claim:
+            last_claim_date = datetime.fromisoformat(last_daily_claim.replace('Z', '+00:00'))
+            
+            # Check if last claim was today
+            if last_claim_date >= today:
+                return jsonify({
+                    'error': 'Daily credits already claimed today. Try again tomorrow!',
+                    'already_claimed': True
+                }), 400
+        
+        # Add 5 credits
+        new_credits = current_credits + 5
+        
+        # Update user credits and claim timestamp
+        supabase.table('users').update({
+            'credits': new_credits,
+            'last_daily_claim': now.isoformat()
+        }).eq('email', email).execute()
+        
+        return jsonify({
+            'success': True,
+            'credits_added': 5,
+            'new_total': new_credits,
+            'message': 'Added 5 daily credits successfully!'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

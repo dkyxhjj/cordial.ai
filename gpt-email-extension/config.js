@@ -1,5 +1,6 @@
 // Extension configuration
 const CONFIG = {
+    // Local testing API URL
     API_BASE_URL: 'https://cordial-ai.onrender.com',
     
     // Gmail selectors for finding email editor
@@ -31,7 +32,7 @@ const CONFIG = {
     ],
     
     // Available tones
-    VALID_TONES: ['professional', 'friendly', 'formal', 'concise'],
+    VALID_TONES: ['professional', 'friendly', 'persuasive', 'concise'],
     
     // Default tone
     DEFAULT_TONE: 'professional'
