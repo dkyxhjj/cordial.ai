@@ -416,7 +416,6 @@ async function handleLogin() {
 function setupCreditButtons(user) {
     const claimButton = document.getElementById('claim-daily-credits');
     const buyButton = document.getElementById('buy-credits');
-    const supportButton = document.getElementById('support-creator');
     
     if (claimButton) {
         claimButton.addEventListener('click', () => handleClaimDailyCredits(user));
@@ -440,7 +439,7 @@ async function handleBuyCredits(user) {
             },
             body: JSON.stringify({
                 email: user.email,
-                credits: 10 // Default 10 credits for $10
+                credits: 20 // Default 10 credits for $10
             })
         });
         
