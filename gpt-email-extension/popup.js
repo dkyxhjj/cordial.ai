@@ -5,11 +5,8 @@ const API_BASE_URL = 'https://cordial-ai.onrender.com';
 document.addEventListener('DOMContentLoaded', function() {
     const toneButtons = document.querySelectorAll('.tone-btn');
     const statusDiv = document.getElementById('status');
-    const authSection = document.getElementById('auth-section');
-    const mainSection = document.getElementById('main-section');
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
-    const userInfo = document.getElementById('user-info');
     
     // Check authentication status on load
     checkAuthStatus();
@@ -234,6 +231,29 @@ function showAuthenticatedState(user) {
     
     loadUserCredits();
 }
+
+// Debug function to test API connectivity
+window.testClaimAPI = async function() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/claim-daily-credits`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                user: { 
+                    email: 'test@example.com' 
+                } 
+            })
+        });
+        
+        console.log('Test API response status:', response.status);
+        const data = await response.json();
+        console.log('Test API response data:', data);
+    } catch (error) {
+        console.error('Test API error:', error);
+    }
+};
 
 async function loadUserCredits() {
     try {
@@ -460,6 +480,14 @@ async function handleBuyCredits(user) {
 async function handleClaimDailyCredits(user) {
     try {
         console.log('Starting claim credits for user:', user);
+        console.log('User email check:', user?.email);
+        
+        if (!user || !user.email) {
+            showStatus('error', 'User authentication required');
+            console.error('No user or email found:', user);
+            return;
+        }
+        
         showStatus('loading', 'Claiming daily credits...');
         
         const requestBody = { user: user };
