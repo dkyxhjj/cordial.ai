@@ -232,28 +232,6 @@ function showAuthenticatedState(user) {
     loadUserCredits();
 }
 
-// Debug function to test API connectivity
-window.testClaimAPI = async function() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/claim-daily-credits`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ 
-                user: { 
-                    email: 'test@example.com' 
-                } 
-            })
-        });
-        
-        console.log('Test API response status:', response.status);
-        const data = await response.json();
-        console.log('Test API response data:', data);
-    } catch (error) {
-        console.error('Test API error:', error);
-    }
-};
 
 async function loadUserCredits() {
     try {
@@ -266,30 +244,61 @@ async function loadUserCredits() {
             
             if (result.user && result.user.email) {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/get-credits`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            user: result.user
-                        })
+                    // Get fresh user data from server including last_daily_claim
+                    const response = await fetch(`${API_BASE_URL}/auth/user`, {
+                        method: 'GET',
+                        credentials: 'include'
                     });
                     
                     if (response.ok) {
-                        const data = await response.json();
-                        updateCreditsDisplay(data.credits);
-                        
-                        // Update cached user data with fresh credits
-                        const updatedUser = { ...result.user, credits: data.credits };
-                        chrome.storage.local.set({ user: updatedUser });
+                        const serverUser = await response.json();
+                        if (serverUser.authenticated) {
+                            // Update local storage with fresh server data
+                            const updatedUser = { 
+                                ...result.user, 
+                                credits: serverUser.credits || result.user.credits || 15,
+                                last_daily_claim: serverUser.last_daily_claim || result.user.last_daily_claim
+                            };
+                            chrome.storage.local.set({ user: updatedUser });
+                            updateCreditsDisplay(updatedUser.credits);
+                            
+                            // Update credit button availability with fresh data
+                            checkDailyCreditAvailability(updatedUser);
+                        } else {
+                            // Fallback to get-credits endpoint
+                            const creditsResponse = await fetch(`${API_BASE_URL}/get-credits`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    user: result.user
+                                })
+                            });
+                            
+                            if (creditsResponse.ok) {
+                                const data = await creditsResponse.json();
+                                updateCreditsDisplay(data.credits);
+                                
+                                // Update cached user data with fresh credits
+                                const updatedUser = { ...result.user, credits: data.credits };
+                                chrome.storage.local.set({ user: updatedUser });
+                                checkDailyCreditAvailability(updatedUser);
+                            } else {
+                                console.warn('Failed to fetch credits from server, using cached value');
+                                updateCreditsDisplay(result.user.credits || 15);
+                                checkDailyCreditAvailability(result.user);
+                            }
+                        }
                     } else {
-                        console.warn('Failed to fetch credits from server, using cached value');
+                        console.warn('Failed to fetch user data from server, using cached value');
                         updateCreditsDisplay(result.user.credits || 15);
+                        checkDailyCreditAvailability(result.user);
                     }
                 } catch (error) {
-                    console.error('Credits fetch error:', error);
+                    console.error('User data fetch error:', error);
                     updateCreditsDisplay(result.user.credits || 15);
+                    checkDailyCreditAvailability(result.user);
                 }
             } else {
                 updateCreditsDisplay(0);
@@ -434,18 +443,27 @@ async function handleLogin() {
 }
 
 function setupCreditButtons(user) {
+    console.log('Setting up credit buttons for user:', user);
     const claimButton = document.getElementById('claim-daily-credits');
     const buyButton = document.getElementById('buy-credits');
     
     if (claimButton) {
-        claimButton.addEventListener('click', () => handleClaimDailyCredits(user));
+        console.log('Daily credits button found, setting up click handler');
+        // Remove any existing event listeners to prevent duplicates
+        claimButton.replaceWith(claimButton.cloneNode(true));
+        const newClaimButton = document.getElementById('claim-daily-credits');
+        newClaimButton.addEventListener('click', () => handleClaimDailyCredits(user));
         checkDailyCreditAvailability(user);
+    } else {
+        console.error('Daily credits button not found in DOM');
     }
     
     if (buyButton) {
+        console.log('Buy credits button found, setting up click handler');
         buyButton.addEventListener('click', () => handleBuyCredits(user));
+    } else {
+        console.error('Buy credits button not found in DOM');
     }
-
 }
 
 async function handleBuyCredits(user) {
@@ -479,34 +497,25 @@ async function handleBuyCredits(user) {
 
 async function handleClaimDailyCredits(user) {
     try {
-        console.log('Starting claim credits for user:', user);
-        console.log('User email check:', user?.email);
-        
         if (!user || !user.email) {
             showStatus('error', 'User authentication required');
-            console.error('No user or email found:', user);
             return;
         }
         
+        console.log('Claiming daily credits for user:', user.email);
         showStatus('loading', 'Claiming daily credits...');
-        
-        const requestBody = { user: user };
-        console.log('Request body:', requestBody);
-        console.log('API URL:', `${API_BASE_URL}/claim-daily-credits`);
         
         const response = await fetch(`${API_BASE_URL}/claim-daily-credits`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify({ user: user })
         });
         
-        console.log('Response status:', response.status);
-        console.log('Response ok:', response.ok);
-        
+        console.log('Daily credits response status:', response.status);
         const data = await response.json();
-        console.log('Response data:', data);
+        console.log('Daily credits response data:', data);
         
         if (response.ok && data.success) {
             showStatus('success', `Claimed ${data.credits_added} credits!`);
@@ -523,11 +532,11 @@ async function handleClaimDailyCredits(user) {
             // Disable button until next day
             checkDailyCreditAvailability(updatedUser);
         } else {
-            console.error('Claim failed:', data);
+            console.error('Daily credits claim failed:', data);
             showStatus('error', data.error || 'Failed to claim credits');
         }
     } catch (error) {
-        console.error('Claim credits error:', error);
+        console.error('Daily credits error:', error);
         showStatus('error', 'Failed to claim daily credits');
     }
 }
@@ -536,15 +545,14 @@ function checkDailyCreditAvailability(user) {
     const claimButton = document.getElementById('claim-daily-credits');
     if (!claimButton) return;
     
-    // Check if user has already claimed today (UTC)
+    // Check if user has already claimed today (UTC) - using same logic as server
     const now = new Date();
-    const today = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const todayReset = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0, 0); // 12 UTC reset time
     const lastClaim = user.last_daily_claim ? new Date(user.last_daily_claim) : null;
     
     if (lastClaim) {
-        const lastClaimDay = new Date(lastClaim.getUTCFullYear(), lastClaim.getUTCMonth(), lastClaim.getUTCDate());
-        
-        if (today.getTime() === lastClaimDay.getTime()) {
+        // Check if last claim was after today's reset time (12 UTC)
+        if (lastClaim >= todayReset) {
             // Already claimed today
             claimButton.disabled = true;
             claimButton.textContent = 'Claimed Today';

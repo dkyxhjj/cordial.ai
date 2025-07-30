@@ -146,6 +146,24 @@ function waitForEditor(timeout = 10000) {
   });
 }
 
+function getUserData() {
+  return new Promise((resolve) => {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(['user'], (result) => {
+        if (chrome.runtime.lastError) {
+          console.error('Chrome storage error:', chrome.runtime.lastError);
+          resolve(null);
+          return;
+        }
+        resolve(result.user || null);
+      });
+    } else {
+      console.error('Chrome storage API not available');
+      resolve(null);
+    }
+  });
+}
+
 async function rewriteEmail(tone = 'professional') {
   try {
     // First check if we're in a compose window at all
@@ -193,6 +211,16 @@ async function rewriteEmail(tone = 'professional') {
 
     showNotification('Rewriting your email...', 'info');
     
+    // Get user authentication data from Chrome storage
+    const userData = await getUserData();
+    if (!userData || !userData.authenticated) {
+      showNotification('Please log in to use email rewriting!', 'error');
+      return {
+        success: false,
+        error: 'Authentication required. Please log in first.'
+      };
+    }
+    
     const isNew = isNewEmail();
     const threadContext = isNew ? '' : getEmailThreadContext();
 
@@ -210,11 +238,25 @@ async function rewriteEmail(tone = 'professional') {
       },
       body: JSON.stringify({
         message: fullMessage,
-        tone: tone
+        tone: tone,
+        user: userData
       })
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        showNotification('Please log in to use email rewriting!', 'error');
+        return {
+          success: false,
+          error: 'Authentication required. Please log in first.'
+        };
+      } else if (response.status === 402) {
+        showNotification('Insufficient credits! Please add more credits.', 'error');
+        return {
+          success: false,
+          error: 'Insufficient credits. Please add more credits.'
+        };
+      }
       const errorMessage = `Server error: ${response.status}`;
       throw new Error(errorMessage);
     }
@@ -235,11 +277,13 @@ async function rewriteEmail(tone = 'professional') {
       editor.dispatchEvent(new Event('input', { bubbles: true }));
       editor.dispatchEvent(new Event('change', { bubbles: true }));
       
-      showNotification('Email rewritten successfully!', 'success');
+      const creditsRemaining = data.credits_remaining || 0;
+      showNotification(`Email rewritten successfully! Credits remaining: ${creditsRemaining}`, 'success');
       
       return {
         success: true,
-        message: 'Email rewritten successfully!'
+        message: 'Email rewritten successfully!',
+        credits_remaining: creditsRemaining
       };
     } else {
       throw new Error('No response received from API');
@@ -341,15 +385,11 @@ function showNotification(message, type = 'info') {
 
 function initialize() {
   if (window.location.hostname === 'mail.google.com') {
-    setTimeout(() => {
-      createFloatingButton();
-    }, 2000);
     let lastUrl = location.href;
     new MutationObserver(() => {
       const url = location.href;
       if (url !== lastUrl) {
         lastUrl = url;
-        setTimeout(createFloatingButton, 1000);
       }
     }).observe(document, { subtree: true, childList: true });
   }

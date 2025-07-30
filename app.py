@@ -306,12 +306,14 @@ def get_user():
             if access_token and refresh_token:
                 supabase.auth.set_session(access_token, refresh_token)
                 
-            # Get credits from Supabase
+            # Get credits and last_daily_claim from Supabase
             email = user.get('email')
             if email:
-                response = supabase.table('users').select('credits').eq('email', email).execute()
+                response = supabase.table('users').select('credits, last_daily_claim').eq('email', email).execute()
                 if response.data and len(response.data) > 0:
-                    user['credits'] = response.data[0].get('credits', 0)
+                    user_data = response.data[0]
+                    user['credits'] = user_data.get('credits', 0)
+                    user['last_daily_claim'] = user_data.get('last_daily_claim')
             return jsonify(user)
         except Exception as e:
             print(f"Get user error: {e}")
