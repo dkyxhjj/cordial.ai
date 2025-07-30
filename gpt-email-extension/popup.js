@@ -424,11 +424,38 @@ function setupCreditButtons(user) {
     }
     
     if (buyButton) {
-        buyButton.addEventListener('click', () => {
-            window.open('https://buy.stripe.com/00wcN68S3cRx7gxgs65gc01', '_blank');
-        });
+        buyButton.addEventListener('click', () => handleBuyCredits(user));
     }
 
+}
+
+async function handleBuyCredits(user) {
+    try {
+        showStatus('loading', 'Creating checkout session...');
+        
+        const response = await fetch(`${API_BASE_URL}/create-checkout-session`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                email: user.email,
+                credits: 10 // Default 10 credits for $10
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.checkout_url) {
+            showStatus('success', 'Redirecting to checkout...');
+            window.open(data.checkout_url, '_blank');
+        } else {
+            showStatus('error', data.error || 'Failed to create checkout session');
+        }
+    } catch (error) {
+        console.error('Buy credits error:', error);
+        showStatus('error', 'Failed to start checkout process');
+    }
 }
 
 async function handleClaimDailyCredits(user) {
@@ -490,7 +517,7 @@ function checkDailyCreditAvailability(user) {
     
     // Can claim today
     claimButton.disabled = false;
-    claimButton.textContent = 'Claim Daily Credits';
+    claimButton.textContent = 'Claim Daily Credits (3)';
     claimButton.style.background = 'white';
     claimButton.style.borderColor = '#d1d5db';
     claimButton.style.color = '#374151';

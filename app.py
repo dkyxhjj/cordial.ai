@@ -8,12 +8,21 @@ from flask import Flask, request, jsonify, render_template, session, redirect, u
 from flask_cors import CORS
 from flask_session import Session
 from supabase import create_client, Client
+import stripe
+import hmac
+import hashlib
 
 load_dotenv('.env.local')
 
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
 OPENAI_MODEL = "gpt-4.1-mini"
+
+# Initialize Stripe
+stripe.api_key = STRIPE_SECRET_KEY
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 api_key = os.getenv('OPENAI_API_KEY') 
 client = OpenAI(api_key=api_key)
@@ -377,6 +386,124 @@ def claim_daily_credits():
     except Exception as e:
         print(f"Daily credits error: {e}")
         return jsonify({'error': 'Failed to claim daily credits'}), 500
+
+@app.route('/stripe-webhook', methods=['POST'])
+def stripe_webhook():
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get('Stripe-Signature')
+    
+    try:
+        # Verify webhook signature
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError as e:
+        print(f"Invalid payload: {e}")
+        return jsonify({'error': 'Invalid payload'}), 400
+    except stripe.error.SignatureVerificationError as e:
+        print(f"Invalid signature: {e}")
+        return jsonify({'error': 'Invalid signature'}), 400
+    
+    # Handle the event
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        
+        # Get customer email and metadata
+        customer_email = session.get('customer_details', {}).get('email')
+        metadata = session.get('metadata', {})
+        credits_to_add = int(metadata.get('credits', 0))
+        
+        if customer_email and credits_to_add > 0:
+            try:
+                # Find user and add credits
+                response = supabase.table('users').select('*').eq('email', customer_email).execute()
+                
+                if response.data and len(response.data) > 0:
+                    user_data = response.data[0]
+                    current_credits = user_data.get('credits', 0)
+                    new_credits = current_credits + credits_to_add
+                    
+                    # Update user credits
+                    supabase.table('users').update({
+                        'credits': new_credits
+                    }).eq('email', customer_email).execute()
+                    
+                    print(f"Added {credits_to_add} credits to {customer_email}. New total: {new_credits}")
+                else:
+                    print(f"User not found: {customer_email}")
+                    
+            except Exception as e:
+                print(f"Error processing payment for {customer_email}: {e}")
+    
+    return jsonify({'status': 'success'})
+
+@app.route('/create-checkout-session', methods=['POST'])
+def create_checkout_session():
+    try:
+        data = request.json
+        email = data.get('email')
+        credits = data.get('credits', 10)
+        
+        if not email:
+            return jsonify({'error': 'Email required'}), 400
+        
+        # Create Stripe checkout session
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'usd',
+                    'product_data': {
+                        'name': f'{credits} Cordial AI Credits',
+                        'description': f'Credits for Cordial AI email writing assistant',
+                    },
+                    'unit_amount': credits * 100,  # $1 per credit in cents
+                },
+                'quantity': 1,
+            }],
+            metadata={
+                'credits': str(credits),
+                'email': email
+            },
+            customer_email=email,
+            mode='payment',
+            success_url='https://cordial-ai.onrender.com/payment-success?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url='https://cordial-ai.onrender.com/payment-cancelled',
+        )
+        
+        return jsonify({'checkout_url': checkout_session.url})
+        
+    except Exception as e:
+        print(f"Checkout session error: {e}")
+        return jsonify({'error': 'Failed to create checkout session'}), 500
+
+@app.route('/payment-success')
+def payment_success():
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head><title>Payment Successful</title></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: center; padding: 50px;">
+        <h1>🎉 Payment Successful!</h1>
+        <p>Your credits have been added to your account.</p>
+        <p>You can close this window and return to the extension.</p>
+    </body>
+    </html>
+    """
+
+@app.route('/payment-cancelled')  
+def payment_cancelled():
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head><title>Payment Cancelled</title></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: center; padding: 50px;">
+        <h1>Payment Cancelled</h1>
+        <p>Your payment was cancelled. No charges were made.</p>
+        <p>You can close this window and try again if needed.</p>
+    </body>
+    </html>
+    """
 
 
 @app.route('/', methods=['GET'])
