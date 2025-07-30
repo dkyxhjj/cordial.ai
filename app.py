@@ -338,44 +338,66 @@ def get_credits():
 
 @app.route('/claim-daily-credits', methods=['POST'])
 def claim_daily_credits():
+    print("=== CLAIM DAILY CREDITS DEBUG ===")
     data = request.json
+    print(f"Request data: {data}")
+    
     user = data.get('user')
+    print(f"User data: {user}")
     
     if not user or not user.get('email'):
+        print("ERROR: User data required")
         return jsonify({'error': 'User data required'}), 400
     
     email = user.get('email')
+    print(f"User email: {email}")
     
     try:
         # Get current user data
+        print("Fetching user from database...")
         response = supabase.table('users').select('*').eq('email', email).execute()
+        print(f"Database response: {response.data}")
         
         if not response.data or len(response.data) == 0:
+            print("ERROR: User not found in database")
             return jsonify({'error': 'User not found'}), 404
         
         user_data = response.data[0]
         current_credits = user_data.get('credits', 0)
         last_daily_claim = user_data.get('last_daily_claim')
         
+        print(f"Current credits: {current_credits}")
+        print(f"Last daily claim: {last_daily_claim}")
+        
         # Check if user has already claimed today (UTC)
         now = datetime.now(timezone.utc)
         today = now.replace(hour=12, minute=0, second=0, microsecond=0)  # Reset at 12 UTC
         
+        print(f"Current time: {now}")
+        print(f"Today reset time: {today}")
+        
         if last_daily_claim:
             last_claim_date = datetime.fromisoformat(last_daily_claim.replace('Z', '+00:00'))
+            print(f"Last claim date: {last_claim_date}")
             # Check if last claim was today (after 12 UTC)
             if last_claim_date >= today:
+                print("ERROR: Already claimed today")
                 return jsonify({'error': 'Daily credits already claimed today. Try again tomorrow!'}), 400
         
         # Add 3 daily credits
         new_credits = current_credits + 3
+        print(f"New credits total: {new_credits}")
         
         # Update user in database
-        supabase.table('users').update({
+        print("Updating user in database...")
+        update_response = supabase.table('users').update({
             'credits': new_credits,
             'last_daily_claim': now.isoformat()
         }).eq('email', email).execute()
         
+        print(f"Update response: {update_response.data}")
+        
+        print("SUCCESS: Daily credits claimed!")
         return jsonify({
             'success': True,
             'credits_added': 3,
@@ -384,8 +406,11 @@ def claim_daily_credits():
         })
         
     except Exception as e:
-        print(f"Daily credits error: {e}")
-        return jsonify({'error': 'Failed to claim daily credits'}), 500
+        print(f"EXCEPTION in daily credits: {e}")
+        print(f"Exception type: {type(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': f'Failed to claim daily credits: {str(e)}'}), 500
 
 @app.route('/stripe-webhook', methods=['POST'])
 def stripe_webhook():

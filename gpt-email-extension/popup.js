@@ -459,29 +459,43 @@ async function handleBuyCredits(user) {
 
 async function handleClaimDailyCredits(user) {
     try {
+        console.log('Starting claim credits for user:', user);
         showStatus('loading', 'Claiming daily credits...');
+        
+        const requestBody = { user: user };
+        console.log('Request body:', requestBody);
+        console.log('API URL:', `${API_BASE_URL}/claim-daily-credits`);
         
         const response = await fetch(`${API_BASE_URL}/claim-daily-credits`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ user: user })
+            body: JSON.stringify(requestBody)
         });
         
+        console.log('Response status:', response.status);
+        console.log('Response ok:', response.ok);
+        
         const data = await response.json();
+        console.log('Response data:', data);
         
         if (response.ok && data.success) {
             showStatus('success', `Claimed ${data.credits_added} credits!`);
             updateCreditsDisplay(data.new_total);
             
-            // Update cached user data
-            const updatedUser = { ...user, credits: data.new_total };
+            // Update cached user data with last claim info
+            const updatedUser = { 
+                ...user, 
+                credits: data.new_total,
+                last_daily_claim: new Date().toISOString()
+            };
             chrome.storage.local.set({ user: updatedUser });
             
             // Disable button until next day
-            checkDailyCreditAvailability(user);
+            checkDailyCreditAvailability(updatedUser);
         } else {
+            console.error('Claim failed:', data);
             showStatus('error', data.error || 'Failed to claim credits');
         }
     } catch (error) {
