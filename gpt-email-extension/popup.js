@@ -30,51 +30,48 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (claimButton) {
         claimButton.addEventListener('click', async function() {
-            try {
-                // Get current user data
-                const result = await new Promise(resolve => {
-                    chrome.storage.local.get(['user'], resolve);
-                });
+            // Get current user data
+            const result = await new Promise(resolve => {
+                chrome.storage.local.get(['user'], resolve);
+            });
                 
-                if (!result.user || !result.user.email) {
-                    showStatus('error', 'Please log in first');
-                    return;
-                }
+            if (!result.user || !result.user.email) {
+                showStatus('error', 'Please log in first');
+                return;
+            }
                 
-                const user = result.user;
+            const user = result.user;
                 
-                showStatus('loading', 'Adding credits...');
+            showStatus('loading', 'Adding credits...');
                 
-                // Call API to add credits
-                const response = await fetch(`${API_BASE_URL}/add-credits`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({ user: user })
-                });
+            // Call API to add credits
+            const response = await fetch(`${API_BASE_URL}/add-credits`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({ user: user })
+            });
                 
-                const data = await response.json();
+            const data = await response.json();
                 
-                if (response.ok && data.success) {
-                    showStatus('success', `Added 5 credits!`);
+            if (response.ok && data.success) {
+                showStatus('success', `Added 5 credits!`);
                     
-                    // Update DOM
-                    updateCreditsDisplay(data.new_total);
+                // Update DOM
+                updateCreditsDisplay(data.new_total);
                     
-                    // Update cached user data
-                    const updatedUser = { 
-                        ...user, 
-                        credits: data.new_total,
+                // Update cached user data
+                const updatedUser = { 
+                    ...user, 
+                    credits: data.new_total,
                         last_daily_claim: now.toISOString()
                     };
-                    chrome.storage.local.set({ user: updatedUser });
-                } else {
-                    showStatus('error', data.error || 'Failed to add credits');
-                }
-            } catch (error) {
-                showStatus('error', 'Failed to add credits');
+                chrome.storage.local.set({ user: updatedUser });
+            }
+            if (!response.ok) {
+                showStatus('error', 'You already claimed today');
             }
         });
     }
