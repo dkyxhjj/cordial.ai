@@ -46,6 +46,7 @@ env/
 .Trashes
 ehthumbs.db
 Thumbs.db
-flask_session
+flask_session/
+.git/
 .claude
 
