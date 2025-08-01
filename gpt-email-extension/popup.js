@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const logoutBtn = document.getElementById('logout-btn');
     const tipsButton = document.getElementById('tips');
     const claimButton = document.getElementById('claim-daily-credits');
+    const consentCheckbox = document.getElementById('consentCheckbox');
     
     // Check authentication status on load
     checkAuthStatus();
@@ -72,6 +73,25 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             if (!response.ok) {
                 showStatus('error', 'You already claimed today');
+            }
+        });
+    }
+
+    // Add consent checkbox handler
+    if (consentCheckbox) {
+        consentCheckbox.addEventListener('change', function() {
+            if (loginBtn) {
+                loginBtn.disabled = !this.checked;
+            }
+        });
+        
+        // Check for existing consent
+        chrome.storage.local.get(['consentGiven'], (result) => {
+            if (result.consentGiven) {
+                consentCheckbox.checked = true;
+                if (loginBtn) {
+                    loginBtn.disabled = false;
+                }
             }
         });
     }
@@ -295,6 +315,9 @@ function showUnauthenticatedState() {
 
 async function handleLogin() {
     try {
+        // Save consent to storage
+        chrome.storage.local.set({ consentGiven: true });
+        
         const authUrl = `${API_BASE_URL}/auth/login`;
         const popup = window.open(authUrl, 'oauth', 'width=500,height=600,scrollbars=yes,resizable=yes');
         

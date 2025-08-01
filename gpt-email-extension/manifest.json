@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Cordial Ai - Email Writing Assistant",
-  "version": "1.2.1",
+  "version": "1.2.3",
   "description": "Automatically rewrites/drafts your emails with multiple tone options.",
   "permissions": ["scripting", "activeTab", "storage"],
+  "privacy_policy": "https://docs.google.com/document/d/e/2PACX-1vQrvpFNr79FgFstg7orJiZs_Sc3uxR15mbvrrYrNpBkH6q_HzfH-4yiFvfxeSk0FyqvBjs1s7xtLtDd/pub",
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
