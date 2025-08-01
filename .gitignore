@@ -47,3 +47,5 @@ env/
 ehthumbs.db
 Thumbs.db
 flask_session
+.claude
+
